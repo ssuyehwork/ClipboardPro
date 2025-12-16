@@ -23,29 +23,20 @@ partition_tags = Table(
     Column('tag_id', Integer, ForeignKey('tags.id'), primary_key=True)
 )
 
-partition_group_tags = Table(
-    'partition_group_tags', Base.metadata,
-    Column('partition_group_id', Integer, ForeignKey('partition_groups.id'), primary_key=True),
-    Column('tag_id', Integer, ForeignKey('tags.id'), primary_key=True)
-)
-
-class PartitionGroup(Base):
-    __tablename__ = 'partition_groups'
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    name = Column(String(50), unique=True, nullable=False)
-    color = Column(String(20), default=None)
-    sort_index = Column(Float, default=0.0)
-    partitions = relationship("Partition", back_populates="group", cascade="all, delete-orphan", order_by="Partition.sort_index")
-    tags = relationship("Tag", secondary=partition_group_tags, back_populates="partition_groups")
-
 class Partition(Base):
     __tablename__ = 'partitions'
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(50), nullable=False)
     color = Column(String(20), default=None)
     sort_index = Column(Float, default=0.0)
-    group_id = Column(Integer, ForeignKey('partition_groups.id'))
-    group = relationship("PartitionGroup", back_populates="partitions")
+    
+    # 新增 parent_id 以支持层级结构
+    parent_id = Column(Integer, ForeignKey('partitions.id'), nullable=True)
+    
+    # 建立父子关系
+    parent = relationship("Partition", remote_side=[id], back_populates="children")
+    children = relationship("Partition", back_populates="parent", cascade="all, delete-orphan", order_by="Partition.sort_index")
+    
     tags = relationship("Tag", secondary=partition_tags, back_populates="partitions")
     items = relationship(
         "ClipboardItem", 
@@ -94,7 +85,6 @@ class Tag(Base):
     name = Column(String(50), unique=True, nullable=False)
     items = relationship("ClipboardItem", secondary=item_tags, back_populates="tags")
     partitions = relationship("Partition", secondary=partition_tags, back_populates="tags")
-    partition_groups = relationship("PartitionGroup", secondary=partition_group_tags, back_populates="tags")
 
 class DBManager:
     def __init__(self, db_name='clipboard_data.db'):
@@ -118,35 +108,80 @@ class DBManager:
             log.critical(f"数据库初始化失败: {e}", exc_info=True)
 
     def _check_migrations(self):
-        """检查并为所有模型执行数据库迁移"""
+        """检查并为所有模型执行数据库迁移，包括从旧的分组/分区模型进行数据迁移。"""
         from sqlalchemy import inspect, text
         try:
             log.info("通用迁移检查：使用 SQLAlchemy Inspector")
             inspector = inspect(self.engine)
             
             with self.engine.connect() as connection:
-                transaction = connection.begin()
+                # 步骤 1: 确保所有新列都已添加（特别是 partitions.parent_id）
+                add_col_transaction = connection.begin()
                 try:
-                    for table_name, table in Base.metadata.tables.items():
-                        log.debug(f"检查表: {table_name}")
-                        existing_cols = {c['name'] for c in inspector.get_columns(table_name)}
-                        
+                    # 仅检查 'partitions' 表，因为这是我们关心的
+                    if inspector.has_table('partitions'):
+                        table = Base.metadata.tables['partitions']
+                        existing_cols = {c['name'] for c in inspector.get_columns('partitions')}
                         for column in table.columns:
-                            col_name = column.name
-                            if col_name not in existing_cols:
-                                # 注意: 这是一个简化的实现，它没有完全复制列的所有约束（如默认值、可空性等）
-                                # 但对于添加新列的常见场景是有效的。
+                            if column.name not in existing_cols:
                                 col_type = column.type.compile(self.engine.dialect)
-                                stmt = text(f'ALTER TABLE {table_name} ADD COLUMN {col_name} {col_type}')
+                                stmt = text(f'ALTER TABLE partitions ADD COLUMN {column.name} {col_type}')
                                 connection.execute(stmt)
-                                log.info(f"✅ 表 '{table_name}' 中添加字段: {col_name}")
-                                
-                    transaction.commit()
-                    log.info("✅ 数据库迁移完成")
+                                log.info(f"✅ 表 'partitions' 中添加字段: {column.name}")
+                    add_col_transaction.commit()
                 except Exception as e:
-                    log.error(f"迁移事务失败，正在回滚: {e}")
-                    transaction.rollback()
+                    log.error(f"添加新列失败，正在回滚: {e}")
+                    add_col_transaction.rollback()
                     raise
+
+                # 步骤 2: 检查是否需要从旧的 partition_groups 模型进行数据迁移
+                if inspector.has_table("partition_groups"):
+                    log.info("检测到旧的 partition_groups 表，开始数据迁移...")
+                    migration_transaction = connection.begin()
+                    try:
+                        # 1. 获取所有组及其标签
+                        groups = connection.execute(text("SELECT id, name, color, sort_index FROM partition_groups ORDER BY id")).fetchall()
+                        group_tags_results = connection.execute(text("SELECT partition_group_id, tag_id FROM partition_group_tags")).fetchall()
+                        group_tags_map = {}
+                        for group_id, tag_id in group_tags_results:
+                            group_tags_map.setdefault(group_id, []).append(tag_id)
+
+                        # 2. 迁移每个组
+                        for old_group_id, name, color, sort_index in groups:
+                            # 将组作为新的顶层分区插入
+                            result = connection.execute(text(
+                                "INSERT INTO partitions (name, color, sort_index, parent_id) VALUES (:name, :color, :sort_index, NULL)"
+                            ), {"name": name, "color": color, "sort_index": sort_index})
+                            
+                            new_parent_id = result.lastrowid
+                            log.info(f"  - 分组 '{name}' (ID:{old_group_id}) 已迁移为顶层分区 (ID:{new_parent_id})")
+
+                            # 更新其原来的子分区，将 group_id 替换为新的 parent_id
+                            # 注意：我们假设旧的 partitions 表有一个 group_id 列
+                            update_stmt = text("UPDATE partitions SET parent_id = :parent_id WHERE group_id = :group_id")
+                            connection.execute(update_stmt, {"parent_id": new_parent_id, "group_id": old_group_id})
+
+                            # 迁移标签
+                            if old_group_id in group_tags_map:
+                                for tag_id in group_tags_map[old_group_id]:
+                                    connection.execute(text(
+                                        "INSERT INTO partition_tags (partition_id, tag_id) VALUES (:p_id, :t_id)"
+                                    ), {"p_id": new_parent_id, "t_id": tag_id})
+                                log.info(f"    - 成功迁移 {len(group_tags_map[old_group_id])} 个标签")
+
+                        # 3. 删除旧的表
+                        connection.execute(text("DROP TABLE partition_group_tags"))
+                        connection.execute(text("DROP TABLE partition_groups"))
+                        log.info("旧的 partition_group_tags 和 partition_groups 表已成功删除。")
+                        
+                        log.warning("旧的 partitions.group_id 列已保留在数据库中，但不会被使用。")
+
+                        migration_transaction.commit()
+                        log.info("✅ 分区数据迁移成功完成！")
+                    except Exception as e:
+                        log.error(f"分区数据迁移失败，正在回滚: {e}")
+                        migration_transaction.rollback()
+                        raise
         except Exception as e:
             log.error(f"迁移检查失败: {e}", exc_info=True)
 
@@ -243,11 +278,9 @@ class DBManager:
             ptype = partition_filter.get('type')
             pid = partition_filter.get('id')
             if ptype == 'partition':
-                q = q.filter(ClipboardItem.partition_id == pid)
-            elif ptype == 'group':
-                # 筛选出属于该组下所有分区的所有项目
-                subquery = session.query(Partition.id).filter(Partition.group_id == pid).subquery()
-                q = q.filter(ClipboardItem.partition_id.in_(subquery))
+                # 新逻辑：筛选出该分区及其所有子孙分区的项目
+                all_partition_ids = self._get_all_descendant_ids(session, pid)
+                q = q.filter(ClipboardItem.partition_id.in_(all_partition_ids))
             elif ptype == 'uncategorized':
                 q = q.filter(ClipboardItem.partition_id == None)
             elif ptype == 'untagged':
@@ -664,44 +697,29 @@ class DBManager:
     # ==============================================================================
 
     def get_partitions_tree(self):
-        """获取所有分区组和分区的层级数据，并按 sort_index 排序"""
+        """获取所有顶层分区及其所有子孙，以构建树。"""
         with self.Session() as session:
             try:
-                # 使用 subqueryload 来有效地加载两层结构：组 -> 分区
-                groups = (
-                    session.query(PartitionGroup)
+                # 预加载多个层级以优化性能
+                partitions = (
+                    session.query(Partition)
+                    .filter(Partition.parent_id == None)
                     .options(
-                        subqueryload(PartitionGroup.partitions)
+                        subqueryload(Partition.children).subqueryload(Partition.children)
                     )
-                    .order_by(PartitionGroup.sort_index)
+                    .order_by(Partition.sort_index)
                     .all()
                 )
-                return groups
+                return partitions
             except Exception as e:
                 log.error(f"获取分区树失败: {e}", exc_info=True)
                 return []
 
-    def add_partition_group(self, name):
-        """添加分区组"""
+    def add_partition(self, name, parent_id=None):
+        """添加新分区，可以是顶层分区或子分区。"""
         with self.Session() as session:
             try:
-                if session.query(PartitionGroup).filter_by(name=name).first():
-                    return None
-                new_group = PartitionGroup(name=name)
-                session.add(new_group)
-                session.commit()
-                session.refresh(new_group)
-                return new_group
-            except Exception as e:
-                log.error(f"添加分区组失败: {e}", exc_info=True)
-                session.rollback()
-                return None
-
-    def add_partition(self, name, group_id):
-        """在组下添加分区"""
-        with self.Session() as session:
-            try:
-                new_partition = Partition(name=name, group_id=group_id)
+                new_partition = Partition(name=name, parent_id=parent_id)
                 session.add(new_partition)
                 session.commit()
                 session.refresh(new_partition)
@@ -710,20 +728,6 @@ class DBManager:
                 log.error(f"添加分区失败: {e}", exc_info=True)
                 session.rollback()
                 return None
-    
-    def rename_partition_group(self, group_id, new_name):
-        """重命名分区组"""
-        with self.Session() as session:
-            try:
-                group = session.query(PartitionGroup).get(group_id)
-                if group:
-                    group.name = new_name
-                    session.commit()
-                return True
-            except Exception as e:
-                log.error(f"重命名分区组失败: {e}")
-                session.rollback()
-                return False
 
     def rename_partition(self, partition_id, new_name):
         """重命名分区"""
@@ -739,48 +743,41 @@ class DBManager:
                 session.rollback()
                 return False
 
-    def delete_partition_group(self, group_id):
-        """删除分区组，并将其下的所有数据项移入回收站。"""
-        with self.Session() as session:
-            try:
-                group = session.query(PartitionGroup).options(
-                    joinedload(PartitionGroup.partitions).subqueryload(Partition.items)
-                ).get(group_id)
-                if not group:
-                    return False
-                
-                item_ids_to_trash = []
-                for partition in group.partitions:
-                    item_ids_to_trash.extend([item.id for item in partition.items])
-                
-                if item_ids_to_trash:
-                    self.move_items_to_trash(item_ids_to_trash)
-                
-                session.delete(group)
-                session.commit()
-                return True
-            except Exception as e:
-                log.error(f"删除分区组失败: {e}")
-                session.rollback()
-                return False
+    def _get_all_descendant_ids(self, session, partition_id):
+        """辅助函数：获取一个分区及其所有子孙分区的ID列表。"""
+        descendant_ids = {partition_id}
+        child_ids_to_process = {partition_id}
+        
+        while child_ids_to_process:
+            q = session.query(Partition.id).filter(Partition.parent_id.in_(child_ids_to_process)).all()
+            child_ids_to_process = {i[0] for i in q}
+            descendant_ids.update(child_ids_to_process)
+            
+        return list(descendant_ids)
 
     def delete_partition(self, partition_id):
-        """删除分区，并将其下的所有数据项移入回收站。"""
+        """递归删除一个分区及其所有子分区，并将所有包含的项目移至回收站。"""
         with self.Session() as session:
             try:
-                partition = session.query(Partition).options(joinedload(Partition.items)).get(partition_id)
-                if not partition:
+                partition_to_delete = session.query(Partition).get(partition_id)
+                if not partition_to_delete:
                     return False
 
-                item_ids_to_trash = [item.id for item in partition.items]
+                # 1. 找到该分区及其所有子孙分区
+                all_ids_to_process = self._get_all_descendant_ids(session, partition_id)
+                
+                # 2. 将这些分区下的所有项目移到回收站
+                item_ids_to_trash_q = session.query(ClipboardItem.id).filter(ClipboardItem.partition_id.in_(all_ids_to_process))
+                item_ids_to_trash = [i[0] for i in item_ids_to_trash_q.all()]
                 if item_ids_to_trash:
                     self.move_items_to_trash(item_ids_to_trash)
                 
-                session.delete(partition)
+                # 3. 删除顶层分区，cascade="all, delete-orphan" 会自动删除所有子孙分区记录
+                session.delete(partition_to_delete)
                 session.commit()
                 return True
             except Exception as e:
-                log.error(f"删除分区失败: {e}")
+                log.error(f"递归删除分区失败: {e}")
                 session.rollback()
                 return False
 
@@ -789,26 +786,13 @@ class DBManager:
         with self.Session() as session:
             try:
                 partition = session.query(Partition).options(joinedload(Partition.tags)).get(partition_id)
-                if not partition:
-                    return
-
-                # 清空现有标签
+                if not partition: return
                 partition.tags.clear()
-                
-                for name in tag_names:
-                    name = name.strip()
-                    if not name:
-                        continue
-                    
-                    tag = session.query(Tag).filter_by(name=name).first()
-                    if not tag:
-                        tag = Tag(name=name)
-                        session.add(tag)
-                        session.flush() # 确保新标签获得ID
-                    
+                for name in [name.strip() for name in tag_names if name.strip()]:
+                    tag = session.query(Tag).filter_by(name=name).first() or Tag(name=name)
+                    session.add(tag)
                     if tag not in partition.tags:
                         partition.tags.append(tag)
-                
                 session.commit()
             except Exception as e:
                 log.error(f"设置分区标签失败: {e}")
@@ -819,71 +803,13 @@ class DBManager:
         with self.Session() as session:
             try:
                 partition = session.query(Partition).options(joinedload(Partition.tags)).get(partition_id)
-                if partition:
-                    return [tag.name for tag in partition.tags]
-                return []
+                return [tag.name for tag in partition.tags] if partition else []
             except Exception as e:
                 log.error(f"获取分区标签失败: {e}")
                 return []
 
-    def set_partition_group_tags(self, group_id, tag_names):
-        """为一个分区组设置预设标签"""
-        with self.Session() as session:
-            try:
-                group = session.query(PartitionGroup).options(joinedload(PartitionGroup.tags)).get(group_id)
-                if not group:
-                    return
-
-                group.tags.clear()
-                
-                for name in tag_names:
-                    name = name.strip()
-                    if not name:
-                        continue
-                    
-                    tag = session.query(Tag).filter_by(name=name).first()
-                    if not tag:
-                        tag = Tag(name=name)
-                        session.add(tag)
-                        session.flush()
-                    
-                    if tag not in group.tags:
-                        group.tags.append(tag)
-                
-                session.commit()
-            except Exception as e:
-                log.error(f"设置分区组标签失败: {e}")
-                session.rollback()
-
-    def get_partition_group_tags(self, group_id):
-        """获取一个分区组的所有预设标签"""
-        with self.Session() as session:
-            try:
-                group = session.query(PartitionGroup).options(joinedload(PartitionGroup.tags)).get(group_id)
-                if group:
-                    return [tag.name for tag in group.tags]
-                return []
-            except Exception as e:
-                log.error(f"获取分区组标签失败: {e}")
-                return []
-
-    def update_partition_group(self, group_id, **kwargs):
-        """更新分区组属性"""
-        with self.Session() as session:
-            try:
-                group = session.query(PartitionGroup).get(group_id)
-                if group:
-                    for k, v in kwargs.items():
-                        setattr(group, k, v)
-                    session.commit()
-                return True
-            except Exception as e:
-                log.error(f"更新分区组失败: {e}")
-                session.rollback()
-                return False
-
     def update_partition(self, partition_id, **kwargs):
-        """更新分区属性"""
+        """更新分区属性（例如名称、颜色、父级、排序）"""
         with self.Session() as session:
             try:
                 partition = session.query(Partition).get(partition_id)
@@ -898,73 +824,39 @@ class DBManager:
                 return False
 
     def get_partition_item_counts(self):
-        """获取每个分区和分区组的项目计数，包括未分类和未标签的计数 (重构版)"""
+        """获取每个分区的项目计数，并递归计算父分区的总数。"""
         with self.Session() as session:
             try:
-                # 基础查询，排除已删除项 (兼容旧数据)
                 base_query = session.query(ClipboardItem).filter(ClipboardItem.is_deleted != True)
                 
-                # 1. 一次性查询所有分区计数，包括 partition_id 为 None 的情况
-                all_partition_counts = dict(base_query.with_entities(
-                    ClipboardItem.partition_id, 
-                    func.count(ClipboardItem.id)
+                direct_counts = dict(base_query.with_entities(
+                    ClipboardItem.partition_id, func.count(ClipboardItem.id)
                 ).group_by(ClipboardItem.partition_id).all())
                 
-                # 2. 从结果中分离出 "未分类" 和 "已分区"
-                uncategorized_count = all_partition_counts.pop(None, 0)
-                partition_counts = all_partition_counts # The rest are partitioned
+                uncategorized_count = direct_counts.pop(None, 0)
+                
+                total_counts = direct_counts.copy()
+                all_partitions = session.query(Partition).all()
+                partition_map = {p.id: p for p in all_partitions}
+
+                for p in all_partitions:
+                    direct_count = direct_counts.get(p.id, 0)
+                    if direct_count > 0:
+                        parent = partition_map.get(p.parent_id)
+                        while parent:
+                            total_counts[parent.id] = total_counts.get(parent.id, 0) + direct_count
+                            parent = partition_map.get(parent.parent_id)
                 
                 counts = {
-                    'partitions': partition_counts,
-                    'groups': {},
+                    'partitions': total_counts,
                     'uncategorized': uncategorized_count,
-                    'untagged': 0,
-                    'trash': 0
+                    'untagged': base_query.filter(~exists().where(item_tags.c.item_id == ClipboardItem.id)).count(),
+                    'trash': session.query(func.count(ClipboardItem.id)).filter(ClipboardItem.is_deleted == True).scalar()
                 }
-
-                # 在内存中计算每个组的总数 (此部分逻辑不变)
-                groups = session.query(PartitionGroup).options(joinedload(PartitionGroup.partitions)).all()
-                for group in groups:
-                    total = sum(counts['partitions'].get(p.id, 0) for p in group.partitions)
-                    counts['groups'][group.id] = total
-
-                # 统计未标签的项目数 (独立查询，逻辑不变)
-                counts['untagged'] = base_query.filter(~exists().where(item_tags.c.item_id == ClipboardItem.id)).count()
-                
-                # 单独统计回收站项目数 (独立查询，逻辑不变)
-                counts['trash'] = session.query(func.count(ClipboardItem.id)).filter(ClipboardItem.is_deleted == True).scalar()
-                    
                 return counts
             except Exception as e:
                 log.error(f"获取分区项目计数失败: {e}", exc_info=True)
-                return {'partitions': {}, 'groups': {}, 'uncategorized': 0, 'untagged': 0, 'trash': 0}
-
-    def apply_group_tags_to_partition_items(self, group_id, partition_id):
-        """将一个组的预设标签应用于一个分区下的所有项目"""
-        with self.Session() as session:
-            try:
-                group = session.query(PartitionGroup).options(joinedload(PartitionGroup.tags)).get(group_id)
-                if not group or not group.tags:
-                    log.debug(f"组 {group_id} 不存在或没有预设标签。")
-                    return
-
-                tag_names = [tag.name for tag in group.tags]
-                log.info(f"准备将组 '{group.name}' 的标签 {tag_names} 应用于分区 {partition_id} 的项目中。")
-
-                items_in_partition = session.query(ClipboardItem).filter_by(partition_id=partition_id).all()
-                if not items_in_partition:
-                    log.debug(f"分区 {partition_id} 中没有项目可供标记。")
-                    return
-                
-                item_ids = [item.id for item in items_in_partition]
-                
-                # 复用现有的批量添加标签的逻辑
-                self.add_tags_to_items(item_ids, tag_names)
-                log.info(f"已成功将标签应用于分区 {partition_id} 中的 {len(item_ids)} 个项目。")
-
-            except Exception as e:
-                log.error(f"应用组标签到分区项目失败: {e}", exc_info=True)
-                session.rollback()
+                return {'partitions': {}, 'uncategorized': 0, 'untagged': 0, 'trash': 0}
 
     def move_items_to_partition(self, item_ids, partition_id):
         """将多个项目批量移动到指定分区"""

@@ -10,6 +10,7 @@ from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                              QAbstractItemView, QTableWidgetItem, QHeaderView, QMenu)
 from PyQt5.QtCore import Qt, QPoint, QTimer, QSettings
 from PyQt5.QtGui import QColor, QKeySequence
+from sqlalchemy.orm import joinedload
 
 # 核心逻辑
 from data.database import DBManager
@@ -173,8 +174,6 @@ class MainWindow(QMainWindow):
         # 核心修复: 当分区数据结构更新时 (例如添加/删除), 才刷新整个分区面板和主列表
         self.partition_panel.partitionsUpdated.connect(self.partition_panel.refresh_partitions)
         self.partition_panel.partitionsUpdated.connect(self.load_data)
-        # 修复：断开直接连接，改为连接到新的处理函数
-        self.partition_panel.itemSelectedInList.connect(self.handle_item_selection_in_partition)
 
         self.dock_partition.setWidget(self.partition_panel)
         self.dock_container.addDockWidget(Qt.LeftDockWidgetArea, self.dock_partition)
