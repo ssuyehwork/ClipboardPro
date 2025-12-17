@@ -13,7 +13,7 @@ from PyQt5.QtGui import QColor, QKeySequence
 from sqlalchemy.orm import joinedload
 
 # 核心逻辑
-from data.database import DBManager
+from data.database import DBManager, Partition
 from services.clipboard import ClipboardManager
 from core.shared import format_size, get_color_icon
 

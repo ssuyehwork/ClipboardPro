@@ -1,0 +1,24 @@
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<bridgedata version='1'>
+	<labels version='1'>
+		<item key='flow_layout.py' label='第二'/>
+		<item key='dialogs.py' label='第二'/>
+		<item key='components.py' label='第二'/>
+		<item key='panel_tags.py' label='第二'/>
+		<item key='temp_color_methods.py' label='第二'/>
+		<item key='dialog_preview.py' label='第二'/>
+		<item key='main_window.py' label='选择'/>
+		<item key='tag_widget.py' label='第二'/>
+		<item key='__init__.py' label='第二'/>
+		<item key='panel_detail.py' label='第二'/>
+		<item key='popup_tag.py' label='第二'/>
+		<item key='panels.py' label='第二'/>
+		<item key='custom_dock.py' label='第二'/>
+		<item key='panel_table.py' label='第二'/>
+		<item key='panel_filter.py' label='第二'/>
+		<item key='widget_tag_input.py' label='第二'/>
+		<item key='context_menu.py' label='第二'/>
+		<item key='color_selector.py' label='第二'/>
+		<item key='panel_partition.py' label='第二'/>
+	</labels>
+</bridgedata>

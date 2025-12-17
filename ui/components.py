@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
-from PyQt5.QtWidgets import (QTableWidget, QAbstractItemView, QLineEdit, QWidget, 
-                             QHBoxLayout, QPushButton, QTreeWidget, QTreeWidgetItem, 
-                             QFrame, QLabel, QCompleter, QComboBox, QToolButton, QMenu)
-from PyQt5.QtCore import Qt, pyqtSignal, QSettings, QSize
-from PyQt5.QtGui import QColor, QBrush, QIcon
+from PyQt5.QtWidgets import (QTableWidget, QAbstractItemView, QLineEdit, QWidget,
+                             QHBoxLayout, QPushButton, QTreeWidget, QTreeWidgetItem,
+                             QFrame, QLabel, QCompleter, QComboBox, QToolButton, QMenu, QStyledItemDelegate, QStyle)
+from PyQt5.QtCore import Qt, pyqtSignal, QSettings, QSize, QEvent, QRect, QStringListModel
+from PyQt5.QtGui import QColor, QBrush, QIcon, QPen, QFontMetrics
 from core.shared import get_color_icon
 
 # === 侧边栏 ===
@@ -102,15 +102,76 @@ class DraggableTable(QTableWidget):
         self.reorder_signal.emit(new_ids)
 
 # === 搜索框 ===
+
+class HistoryCompleterDelegate(QStyledItemDelegate):
+    """自定义委托，用于在搜索历史记录的末尾绘制一个删除按钮。"""
+    delete_triggered = pyqtSignal(str)
+
+    def paint(self, painter, option, index):
+        # 首先调用父类的paint方法，绘制背景、文本等基本元素
+        super().paint(painter, option, index)
+
+        # 获取删除按钮的矩形区域
+        delete_button_rect = self.get_delete_button_rect(option)
+
+        painter.save()
+
+        # 如果鼠标悬停在该项上，则高亮删除按钮
+        if option.state & QStyle.State_MouseOver:
+            pen = QPen(QColor("#d0d0d0"))  # 悬停时使用更亮的灰色
+        else:
+            pen = QPen(QColor("#a0a0a0"))  # 默认使用暗灰色
+
+        painter.setPen(pen)
+
+        # 设置字体以绘制 "×"
+        font = painter.font()
+        font.setBold(True)
+        painter.setFont(font)
+
+        # 在计算好的矩形区域内居中绘制 "×"
+        painter.drawText(delete_button_rect, Qt.AlignCenter, "×")
+        painter.restore()
+
+    def editorEvent(self, event, model, option, index):
+        # 仅在鼠标释放事件时响应
+        if event.type() == QEvent.MouseButtonRelease:
+            # 检查点击位置是否在删除按钮的矩形区域内
+            if self.get_delete_button_rect(option).contains(event.pos()):
+                # 发射信号，通知SearchBar删除此项
+                self.delete_triggered.emit(index.data())
+                return True  # 返回True表示事件已被处理
+        return super().editorEvent(event, model, option, index)
+
+    def get_delete_button_rect(self, option):
+        """计算并返回删除按钮 "×" 的矩形区域。"""
+        rect = option.rect
+        # 按钮位于最右侧，宽度为20px
+        delete_button_rect = QRect(rect.right() - 20, rect.top(), 20, rect.height())
+        return delete_button_rect
+
 class SearchBar(QLineEdit):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setPlaceholderText("🔍 搜索内容...")
         self.settings = QSettings("ClipboardPro", "SearchHistory")
         self.history = self.settings.value("history", [], type=list)
-        self.completer = QCompleter(self.history); self.completer.setCaseSensitivity(Qt.CaseInsensitive)
+
+        # 使用 QStringListModel 来管理历史记录
+        self.model = QStringListModel(self.history)
+        
+        self.completer = QCompleter(self.model, self)
+        self.completer.setCaseSensitivity(Qt.CaseInsensitive)
+        
+        # 实例化并应用自定义委托
+        self.delegate = HistoryCompleterDelegate(self)
+        self.completer.popup().setItemDelegate(self.delegate)
+
         self.setCompleter(self.completer)
         self.returnPressed.connect(self._save)
+
+        # 连接委托的删除信号到删除槽函数
+        self.delegate.delete_triggered.connect(self.delete_history_item)
         
         self.clearBtn = QPushButton("×", self)
         self.clearBtn.setCursor(Qt.PointingHandCursor)
@@ -119,21 +180,41 @@ class SearchBar(QLineEdit):
         self.clearBtn.clicked.connect(self.clear)
         self.clearBtn.hide()
         self.textChanged.connect(self._on_text_changed)
+        
+        # 为输入框设置右边距，防止文本与清除按钮重叠
+        # 按钮宽度为20px, 与边框的距离为11px, 再额外加4px的文本间距
+        self.setTextMargins(0, 0, 20 + 11 + 4, 0)
 
     def _on_text_changed(self, text):
         self.clearBtn.setVisible(bool(text))
 
     def resizeEvent(self, event):
-        sz = self.clearBtn.sizeHint()
-        fr = self.rect()
-        self.clearBtn.move(fr.right() - sz.width() - 4, (fr.bottom() - sz.height()) // 2)
+        button_size = self.clearBtn.sizeHint()
+        frame_rect = self.rect()
+        # 将按钮放置在最右侧，并保留11px的边距 (4px原边距 + 7px左移)
+        x_pos = frame_rect.right() - button_size.width() - 11
+        # 垂直居中
+        y_pos = (frame_rect.height() - button_size.height()) // 2
+        self.clearBtn.move(x_pos, y_pos)
         super().resizeEvent(event)
 
+    def delete_history_item(self, text):
+        """从历史记录中删除指定的项。"""
+        if text in self.history:
+            self.history.remove(text)
+            self.settings.setValue("history", self.history)
+            # 更新模型以刷新视图
+            self.model.setStringList(self.history)
+
     def _save(self):
+        """保存新的搜索记录。"""
         t = self.text().strip()
         if t and t not in self.history:
-            self.history.insert(0, t); self.history = self.history[:20]; self.settings.setValue("history", self.history)
-            self.completer = QCompleter(self.history); self.setCompleter(self.completer)
+            self.history.insert(0, t)
+            self.history = self.history[:20]  # 限制历史记录数量
+            self.settings.setValue("history", self.history)
+            # 更新模型以刷新视图
+            self.model.setStringList(self.history)
 
 # === 标题栏 ===
 class CustomTitleBar(QWidget):
@@ -148,7 +229,7 @@ class CustomTitleBar(QWidget):
     
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setFixedHeight(40)
+        self.setFixedHeight(36)
         self.setAttribute(Qt.WA_StyledBackground, True)
         
         layout = QHBoxLayout(self)
@@ -165,13 +246,6 @@ class CustomTitleBar(QWidget):
         self.search_bar.returnPressed.connect(lambda: self.search_changed.emit())
         layout.addWidget(self.search_bar)
         
-        btn_clear_search = QPushButton("✕")
-        btn_clear_search.setFixedSize(24, 24)
-        btn_clear_search.setToolTip("清空搜索")
-        btn_clear_search.setObjectName("ClearSearchButton") # 设置ObjectName
-        btn_clear_search.clicked.connect(lambda: self.search_bar.clear())
-        layout.addWidget(btn_clear_search)
-
         self.btn_display_count = QToolButton()
         self.btn_display_count.setText("显示: 100")
         self.btn_display_count.setPopupMode(QToolButton.InstantPopup)
@@ -232,14 +306,14 @@ class CustomTitleBar(QWidget):
         self._update_display_count_text(count)
     
     def _btn(self, t, tip, chk=False):
-        b = QPushButton(t); b.setToolTip(tip); b.setFixedSize(34, 34)
+        b = QPushButton(t); b.setToolTip(tip); b.setFixedSize(30, 30)
         if chk:
             b.setCheckable(True)
         return b
 
     def _win_btn(self, t, cls=False):
         b = QPushButton(t)
-        b.setFixedSize(46, 34)
+        b.setFixedSize(30, 30)
         return b
 
     def toggle_max(self):

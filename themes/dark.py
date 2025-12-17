@@ -49,21 +49,25 @@ STYLESHEET = """
         background: #4a4a4a;
     }
 
-    /* === 滚动条（强制纯色，禁止继承网格） === */
+    /* === 滚动条：最终修复版 === */
     QScrollBar:vertical {
-        background: #2d2d2d;   /* 纯深灰，不透明 */
+        background-color: #2d2d2d; /* 强制指定背景色 */
+        background-image: none;    /* 强制禁用背景图，杜绝网格 */
         width: 14px;
-        margin: 1px;
-        border: 1px solid #202020;
+        margin: 0px;               /* 强制边距为0，杜绝缝隙 */
+        border: none;              /* 强制无边框，杜绝缝隙 */
         border-radius: 3px;
     }
     QScrollBar::handle:vertical {
-        background: #555555;   /* 深灰 handle */
+        background: #555555;
         min-height: 25px;
         border-radius: 2px;
     }
     QScrollBar::handle:vertical:hover {
         background: #6a6a6a;
+    }
+    QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
+        background: #2d2d2d; /* 轨道背景 */
     }
     QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
         height: 0px;
@@ -72,10 +76,11 @@ STYLESHEET = """
     }
 
     QScrollBar:horizontal {
-        background: #2d2d2d;   /* 纯深灰，不透明 */
+        background-color: #2d2d2d; /* 强制指定背景色 */
+        background-image: none;    /* 强制禁用背景图，杜绝网格 */
         height: 14px;
-        margin: 1px;
-        border: 1px solid #202020;
+        margin: 0px;               /* 强制边距为0，杜绝缝隙 */
+        border: none;              /* 强制无边框，杜绝缝隙 */
         border-radius: 3px;
     }
     QScrollBar::handle:horizontal {
@@ -86,6 +91,21 @@ STYLESHEET = """
     QScrollBar::handle:horizontal:hover {
         background: #6a6a6a;
     }
+    QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
+        background: #2d2d2d; /* 轨道背景 */
+    }
+    QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
+        width: 0px;
+        border: none;
+        background: none;
+    }
+
+    /* === 滚动条角落（修复右下角白块） === */
+    QAbstractScrollArea::corner {
+        background: #2d2d2d;
+        border: none;
+        background-image: none; /* 确保无背景图 */
+    }
 
     /* === 列表与树状控件 === */
     QListWidget, QTreeWidget, QTableWidget {
@@ -94,6 +114,7 @@ STYLESHEET = """
         border-radius: 4px;
         padding: 0px;
         alternate-background-color: #353535; /* 深灰斑马纹，无白色 */
+        background-image: none; /* 确保无背景图 */
     }
 
     /* 减少左侧缩进（让红色区域变窄） */
@@ -142,10 +163,15 @@ STYLESHEET = """
     QHeaderView::section {
         background-color: #323232;
         color: #a0a0a0;
-        padding: 8px;
+        padding: 4px 8px;
         border: none;
         border-bottom: 1px solid #202020;
         border-right: 1px solid #202020;
+    }
+
+    /* 垂直表头（行号）特殊处理 */
+    QHeaderView::section:vertical {
+        padding: 4px 0px; /* 上下4px, 左右0px */
     }
 
     QTableCornerButton::section {
@@ -189,6 +215,11 @@ STYLESHEET = """
     CustomTitleBar {
         background-color: #323232;
         border-bottom: 1px solid #202020;
+        margin-bottom: 1px;
+    }
+
+    #WindowTitle {
+        background: transparent;
     }
 
     /* === 按钮 === */
@@ -220,9 +251,8 @@ STYLESHEET = """
     #ToolBarButton, #WindowControlButton, #WindowCloseButton {
         background-color: transparent;
         border: none;
-        padding: 0;
-        min-width: 0;
         border-radius: 4px;
+        padding: 0px;
     }
     #ToolBarButton:hover, #WindowControlButton:hover {
         background-color: #4a4a4a;
@@ -230,7 +260,28 @@ STYLESHEET = """
     #WindowCloseButton:hover {
         background-color: #c84c4c;
     }
+
+    #DisplayCountButton {
+        padding-right: 12px; /* 默认QToolButton是6px, 增加一些空间给文字 */
+    }
+
+    #DisplayCountButton::menu-indicator {
+        image: none;
+    }
     
+    #SearchBarClearButton {
+        background: transparent;
+        border: none;
+        padding: 0px;
+        margin: 0px;
+        color: #a0a0a0;
+        font-size: 16px;
+        font-weight: bold;
+    }
+    #SearchBarClearButton:hover {
+        color: #d0d0d0;
+    }
+        
     /* 底部栏 */
     MainWindow > QWidget > QWidget > QFrame > QWidget > QWidget {
        border-top: 1px solid #202020;
