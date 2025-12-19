@@ -114,7 +114,7 @@ class QuickPanel(QWidget):
 
         # 连接标题栏按钮信号
         self.title_bar.pin_button.clicked.connect(self._toggle_stay_on_top)
-        self.title_bar.toggle_partition_button.clicked.connect(self.partition_tree.setVisible)
+        self.title_bar.toggle_partition_button.clicked.connect(self._toggle_partition_panel)
         self.title_bar.close_button.clicked.connect(self.close)
 
         self._update_partition_tree()
@@ -208,6 +208,10 @@ class QuickPanel(QWidget):
 
     def _on_partition_selection_changed(self, current, previous):
         self._update_list()
+
+    def _toggle_partition_panel(self):
+        """切换分区面板的可见性。"""
+        self.partition_tree.setVisible(not self.partition_tree.isVisible())
 
     def _toggle_stay_on_top(self):
         """切换窗口的置顶状态。"""
