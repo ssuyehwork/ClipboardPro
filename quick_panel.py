@@ -67,6 +67,8 @@ class QuickPanel(QWidget):
         self.search_box.setPlaceholderText("搜索...")
 
         self.list_widget = QListWidget(self)
+        self.list_widget.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.list_widget.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
 
         self.layout.addWidget(self.search_box)
         self.layout.addWidget(self.list_widget)
