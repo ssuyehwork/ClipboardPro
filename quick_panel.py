@@ -24,7 +24,6 @@ QListWidget, QTreeWidget {
 
 QListWidget::item, QTreeWidget::item {
     padding: 8px;
-    outline: none; /* 移除虚线焦点框 */
 }
 
 QListWidget::item:selected, QTreeWidget::item:selected {
@@ -155,12 +154,14 @@ class QuickPanel(QWidget):
         self.list_widget = QListWidget(self)
         self.list_widget.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.list_widget.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.list_widget.setFocusPolicy(Qt.NoFocus) # 彻底禁用焦点
 
         left_layout.addWidget(self.search_box)
         left_layout.addWidget(self.list_widget)
 
         self.partition_tree = QTreeWidget(self)
         self.partition_tree.setHeaderHidden(True)
+        self.partition_tree.setFocusPolicy(Qt.NoFocus) # 彻底禁用焦点
 
         content_layout.addWidget(left_widget, 3)
         content_layout.addWidget(self.partition_tree, 1)
