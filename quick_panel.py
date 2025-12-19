@@ -73,10 +73,10 @@ class CustomTitleBar(QWidget):
         spacer = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
         self.layout.addSpacerItem(spacer)
 
-        # 创建按钮 (暂时用文字代替图标)
-        self.pin_button = QPushButton("P", self)
-        self.toggle_partition_button = QPushButton("E", self)
-        self.close_button = QPushButton("X", self)
+        # 创建按钮
+        self.pin_button = QPushButton(self)
+        self.toggle_partition_button = QPushButton(self)
+        self.close_button = QPushButton(self)
 
         # 添加到布局
         self.layout.addWidget(self.pin_button)
@@ -123,7 +123,7 @@ class QuickPanel(QWidget):
 
     def _init_ui(self):
         self.setWindowTitle("Quick Panel")
-        self.setWindowFlags(Qt.FramelessWindowHint | Qt.Popup) # 移除 StaysOnTopHint，交由按钮控制
+        self.setWindowFlags(Qt.FramelessWindowHint | Qt.Tool) # 修改为Tool类型，避免失去焦点时消失
 
         # 主布局变为垂直
         self.main_layout = QVBoxLayout(self)
