@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
-                             QFrame, QScrollArea, QGridLayout, QPushButton)
+                             QFrame, QScrollArea, QGridLayout, QPushButton, QGraphicsDropShadowEffect)
 from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt5.QtGui import QColor
 
 class TagPopup(QWidget):
     """
@@ -17,15 +18,24 @@ class TagPopup(QWidget):
         
         # 布局容器
         self.main_layout = QVBoxLayout(self)
-        self.main_layout.setContentsMargins(0, 0, 0, 0)
+        self.main_layout.setContentsMargins(10, 10, 10, 10) # 预留阴影空间
         self.main_layout.setSpacing(0)
         
         self.container = QFrame()
-        self.container.setObjectName("TagPopupContainer") # 设置ObjectName
+        self.container.setObjectName("TagPopupContainer")
+        self.container.setAttribute(Qt.WA_StyledBackground, True)
+        
+        # 增加物理阴影
+        shadow = QGraphicsDropShadowEffect(self)
+        shadow.setBlurRadius(15)
+        shadow.setXOffset(0)
+        shadow.setYOffset(2)
+        shadow.setColor(QColor(0, 0, 0, 150))
+        self.container.setGraphicsEffect(shadow)
         
         self.layout_container = QVBoxLayout(self.container)
-        self.layout_container.setContentsMargins(4, 4, 4, 4)
-        self.layout_container.setSpacing(8)
+        self.layout_container.setContentsMargins(8, 8, 8, 8) # 增加内边距
+        self.layout_container.setSpacing(6)
         
         # 1. 创建模式视图 (顶部)
         self.creation_view = QFrame()
@@ -51,15 +61,19 @@ class TagPopup(QWidget):
         
         self.scroll = QScrollArea()
         self.scroll.setWidgetResizable(True)
-        
+        self.scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.scroll.setFrameShape(QFrame.NoFrame)
+        self.scroll.setStyleSheet("background: transparent;")
+
         self.grid_widget = QWidget()
         self.grid_layout = QGridLayout(self.grid_widget)
-        self.grid_layout.setContentsMargins(0, 0, 0, 0)
-        self.grid_layout.setSpacing(6)
+        self.grid_layout.setContentsMargins(2, 2, 2, 2)
+        self.grid_layout.setSpacing(4)
+        self.grid_layout.setAlignment(Qt.AlignTop | Qt.AlignLeft)
         self.scroll.setWidget(self.grid_widget)
-        
-        self.history_layout.addWidget(self.scroll)
-        self.layout_container.addWidget(self.history_view)
+
+        self.history_layout.addWidget(self.scroll, 1) # 赋予权重 1
+        self.layout_container.addWidget(self.history_view, 1) # 赋予权重 1
         
         self.main_layout.addWidget(self.container)
         
@@ -147,7 +161,7 @@ class TagPopup(QWidget):
         btn.setProperty("tag_name", name)
         btn.setObjectName("TagPopupButton") # 设置ObjectName
         
-        btn.setText(f"🕒 {name}")
+        btn.setText(f"🕒 {name}") # 恢复时钟符号
         btn.setToolTip(f"引用次数: {count}")
         
         btn.clicked.connect(lambda checked, n=name: self._on_tag_clicked(n, checked))
@@ -163,9 +177,9 @@ class TagPopup(QWidget):
                 btn.setChecked(is_sel)
                 
                 if is_sel:
-                    btn.setText(f"🕒 {name}  ✅")
+                    btn.setText(f"🕒 {name}") # 恢复时钟，但保持移除 ✅
                 else:
-                    btn.setText(f"🕒 {name}")
+                    btn.setText(f"🕒 {name}") # 恢复时钟
 
     def _on_tag_clicked(self, name, checked):
         if checked:

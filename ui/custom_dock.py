@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import logging
-from PyQt5.QtWidgets import QWidget, QHBoxLayout, QLabel, QToolButton, QMenu, QAction, QDockWidget
+from PyQt5.QtWidgets import QWidget, QHBoxLayout, QLabel, QToolButton, QMenu, QAction, QDockWidget, QStylePainter, QStyleOption, QStyle
 from PyQt5.QtCore import Qt
 
 # 配置日志
@@ -36,6 +36,14 @@ class CustomDockTitleBar(QWidget):
         self.btn_menu.clicked.connect(self.show_menu)
         
         layout.addWidget(self.btn_menu)
+
+    def paintEvent(self, event):
+        """强制渲染 QSS 背景色，解决自定义 QWidget 背景不生效的问题"""
+        opt = QStyleOption()
+        opt.initFrom(self)
+        p = QStylePainter(self)
+        p.drawPrimitive(QStyle.PE_Widget, opt)
+        super().paintEvent(event)
 
     def show_menu(self):
         log.info(f"🍔 点击了 [{self.label.text()}] 的菜单按钮")

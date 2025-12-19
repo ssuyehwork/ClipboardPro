@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTextEdit, QLabel, 
-                             QLineEdit, QPushButton, QScrollArea, QFrame, QSizePolicy)
+                             QLineEdit, QPushButton, QScrollArea, QFrame, QSizePolicy, QGraphicsDropShadowEffect)
 from PyQt5.QtCore import Qt, pyqtSignal, QSize
-from PyQt5.QtGui import QPixmap, QIcon, QMouseEvent
+from PyQt5.QtGui import QPixmap, QIcon, QMouseEvent, QColor
 import os
 from .flow_layout import FlowLayout  # 导入新的布局管理器
 from .widgets.tag_widget import TagWidget
@@ -18,8 +18,8 @@ class DetailPanel(QWidget):
         self.setAttribute(Qt.WA_StyledBackground, True)
             
         self.layout = QVBoxLayout(self)
-        self.layout.setContentsMargins(16, 16, 16, 16) # 舒适的内边距
-        self.layout.setSpacing(16) # 模块间距
+        self.layout.setContentsMargins(10, 10, 10, 12) # 缩减内边距，把空间还给文字
+        self.layout.setSpacing(12) 
         
         # 0. 所属分区/分组信息
         partition_info_layout = QHBoxLayout()
@@ -42,12 +42,27 @@ class DetailPanel(QWidget):
         self.preview.textChanged.connect(self._update_preview_height) # 文本变化时更新高度
         self.layout.addWidget(self.preview)
         
-        # 图片预览组件 (默认隐藏，和文本预览互斥显示)
+        # 图片预览组件容器 (用于承载阴影)
+        self.image_container = QWidget()
+        self.image_container_layout = QVBoxLayout(self.image_container)
+        self.image_container_layout.setContentsMargins(10, 10, 10, 10) # 预留阴影显示空间
+        self.image_container_layout.setAlignment(Qt.AlignCenter) # 关键：确保内部组件居中
+        
         self.image_label = QLabel()
         self.image_label.setObjectName("ImageBox")
         self.image_label.setAlignment(Qt.AlignCenter)
-        self.image_label.hide()
-        self.layout.addWidget(self.image_label)
+        
+        # 为图片增加物理阴影
+        shadow = QGraphicsDropShadowEffect(self)
+        shadow.setBlurRadius(15)
+        shadow.setXOffset(0)
+        shadow.setYOffset(4)
+        shadow.setColor(QColor(0, 0, 0, 180))
+        self.image_label.setGraphicsEffect(shadow)
+        
+        self.image_container_layout.addWidget(self.image_label)
+        self.image_container.hide()
+        self.layout.addWidget(self.image_container)
 
         # 2. 备注模块
         note_container = QWidget()
@@ -62,6 +77,7 @@ class DetailPanel(QWidget):
         self.note_edit = QLineEdit()
         self.note_edit.setObjectName("NoteInput")
         self.note_edit.setPlaceholderText("点击添加备注信息...")
+        self.note_edit.setEnabled(False) # 默认禁用
         self.note_edit.returnPressed.connect(lambda: self.update_note_signal.emit(self.note_edit.text()))
         note_layout.addWidget(self.note_edit)
         
@@ -122,21 +138,28 @@ class DetailPanel(QWidget):
         
         if final_image_path:
             self.preview.hide()
+            self.image_container.show()
             self.image_label.show()
             pixmap = QPixmap(final_image_path)
             if not pixmap.isNull():
-                # 以宽度为基准，创建一个正方形的缩略图
-                size = self.image_label.width()
-                self.image_label.setPixmap(pixmap.scaled(size, size, Qt.KeepAspectRatio, Qt.SmoothTransformation))
-                # 关键：设置固定高度以保持正方形
-                self.image_label.setFixedHeight(size)
+                # 计算缩放后的实际尺寸，确保文字不被挤压，阴影紧贴图片
+                max_w = self.width() - 40 # 减去边距和阴影空间
+                scaled_pixmap = pixmap.scaled(max_w, max_w, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                self.image_label.setPixmap(scaled_pixmap)
+                # 关键：清除固定高度，让 Label 自动包裹 Pixmap
+                self.image_label.setFixedSize(scaled_pixmap.size())
             else:
                 self.image_label.setText("图片无法加载")
         else:
+            self.image_container.hide()
             self.image_label.hide()
             self.preview.show()
             self.preview.setText(content)
 
+        # 加载数据后，启用交互组件
+        self.note_edit.setEnabled(True)
+        self.tag_input.setEnabled(True)
+        
         # 刷新标签和高度
         self._refresh_tags(tags)
         self._update_preview_height()
@@ -184,7 +207,13 @@ class DetailPanel(QWidget):
         self.lbl_partition.setText("分区: --")
         self.preview.clear()
         self.note_edit.clear()
+        
+        # 清空数据时，禁用交互组件
+        self.note_edit.setEnabled(False)
+        self.tag_input.setEnabled(False)
+        
         self._refresh_tags([])
+        self.image_container.hide()
         self.image_label.hide()
         self.preview.show()
 

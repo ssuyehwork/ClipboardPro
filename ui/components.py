@@ -240,7 +240,10 @@ class CustomTitleBar(QWidget):
         title.setObjectName("WindowTitle") # 设置ObjectName
         layout.addWidget(title)
         
+        layout.addSpacing(20) # 增加 20px 的右偏移
+        
         self.search_bar = SearchBar()
+        self.search_bar.setObjectName("ToolbarSearchBar") # 为搜索框设置对象名，以便单独控制高度
         self.search_bar.setFixedWidth(220)
         self.search_bar.textChanged.connect(lambda: self.search_changed.emit())
         self.search_bar.returnPressed.connect(lambda: self.search_changed.emit())
@@ -273,7 +276,8 @@ class CustomTitleBar(QWidget):
         self.btn_settings = QToolButton()
         self.btn_settings.setText("⚙️")
         self.btn_settings.setPopupMode(QToolButton.InstantPopup)
-        self.btn_settings.setObjectName("ToolBarButton") # 复用样式
+        self.btn_settings.setObjectName("ToolBarButton") # 恢复通用ID以保持样式统一
+        self.btn_settings.setProperty("class", "no-arrow") # 添加自定义属性用于精确控制
         
         settings_menu = QMenu(self)
         theme_action = settings_menu.addAction("切换主题")

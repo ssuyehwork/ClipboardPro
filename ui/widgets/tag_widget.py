@@ -20,6 +20,7 @@ class TagWidget(QWidget):
         self.label.setAttribute(Qt.WA_TranslucentBackground)
 
         self.close_button = QPushButton("×")
+        self.close_button.setObjectName("TagCloseButton") # 关键：应用置零内边距样式
         self.close_button.setFixedSize(16, 16)
         self.close_button.clicked.connect(self.on_remove)
 
@@ -28,6 +29,7 @@ class TagWidget(QWidget):
 
         self.setLayout(layout)
         self.setAttribute(Qt.WA_StyledBackground, True)
+        self.setAutoFillBackground(True) # 确保背景色能显示
 
     def on_remove(self):
         self.removed.emit(self.text)

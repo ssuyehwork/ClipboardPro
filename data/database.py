@@ -303,55 +303,34 @@ class DBManager:
                 selected_extensions = [t for t in filters['types'] if t not in standard_types and t != 'folder']
                 selected_folder = 'folder' in filters['types']
                 
-                # 1. 标准类型直接匹配 item_type
                 if selected_standard:
                     type_conditions.append(ClipboardItem.item_type.in_(selected_standard))
                 
-                # 2. 文件夹逻辑 (暂时简单通过 item_type='file' 匹配，TODO: 需更精确判断)
                 if selected_folder:
-                     # 因为数据库无法直接判断 isdir，这里必须包含所有文件类型，
-                     # 或者如果能确保 folder 的 item_type='file' 且无后缀? 
-                     # 暂时先匹配 item_type='file'.
-                     # 更精确的做法: item_type='file' AND (file_path NOT LIKE '%.%') ? 不够准确
-                     # 目前暂用 item_type='file' 且 排除已知扩展名?
-                     # 或者直接匹配 item_type='file' (包含所有文件和文件夹)
-                     # 妥协: 既然用户选择了文件夹，即使包含了普通文件也比不显示好。
-                     # 但为了尽量准确，我们假设 folder 没有扩展名 (不完全正确但有效)
                      type_conditions.append(ClipboardItem.item_type == 'file')
                 
-                # 3. 扩展名匹配 (检查 file_path 或 image_path)
                 if selected_extensions:
                     ext_conditions = []
                     for ext in selected_extensions:
-                        # 匹配 .EXT (忽略大小写，但在 SQLite LIKE 不区分大小写)
-                        # 注意：需要同时检查 file_path 和 image_path
                         pattern = f"%.{ext}"
                         ext_conditions.append(ClipboardItem.file_path.like(pattern))
                         ext_conditions.append(ClipboardItem.image_path.like(pattern))
-                    
-                    # 扩展名之间是 OR 关系 (比如选了 PNG 或 JPG)
                     type_conditions.append(or_(*ext_conditions))
                 
-                # 不同类型之间是 OR 关系 (比如选了 Text 或 PNG)
                 if type_conditions:
                     q = q.filter(or_(*type_conditions))
         
         if selected_tags: 
             log.debug(f"🏷️ 应用标签筛选: {selected_tags}")
             q = q.join(item_tags).join(Tag).filter(Tag.name.in_(selected_tags))
+        
         if search:
             log.debug(f"🔎 应用搜索: '{search}'")
             search_pattern = f"%{search}%"
-            
-            # 使用 outerjoin 确保没有标签的条目也能被搜索到内容和备注
-            # 然后添加 distinct() 来处理因一个条目匹配多个标签而产生的重复结果
-            q = q.outerjoin(item_tags).outerjoin(Tag).filter(
-                or_(
-                    Tag.name.like(search_pattern),
-                    ClipboardItem.content.like(search_pattern),
-                    ClipboardItem.note.like(search_pattern)
-                )
-            ).distinct()
+            # 优化：使用子查询来分别查找匹配的ID，然后用OR组合，避免复杂的JOIN和DISTINCT
+            content_search_sq = session.query(ClipboardItem.id).filter(or_(ClipboardItem.content.like(search_pattern), ClipboardItem.note.like(search_pattern))).subquery()
+            tag_search_sq = session.query(item_tags.c.item_id).join(Tag).filter(Tag.name.like(search_pattern)).subquery()
+            q = q.filter(or_(ClipboardItem.id.in_(content_search_sq), ClipboardItem.id.in_(tag_search_sq)))
         
         # 创建日期筛选逻辑
         if date_filter:
@@ -359,7 +338,6 @@ class DBManager:
             today = now.date()
             start_dt, end_dt = None, None
             
-            # === 新增：今日 ===
             if date_filter == "今日":
                 start_dt = datetime.combine(today, time.min)
                 end_dt = datetime.combine(today, time.max)
@@ -744,16 +722,18 @@ class DBManager:
                 return False
 
     def _get_all_descendant_ids(self, session, partition_id):
-        """辅助函数：获取一个分区及其所有子孙分区的ID列表。"""
-        descendant_ids = {partition_id}
-        child_ids_to_process = {partition_id}
+        """优化：使用递归CTE（公共表表达式）来高效地获取一个分区及其所有子孙分区的ID列表。"""
+        # 定义递归查询的起始部分
+        partition_cte = session.query(Partition.id).filter(Partition.id == partition_id).cte(name="partition_cte", recursive=True)
         
-        while child_ids_to_process:
-            q = session.query(Partition.id).filter(Partition.parent_id.in_(child_ids_to_process)).all()
-            child_ids_to_process = {i[0] for i in q}
-            descendant_ids.update(child_ids_to_process)
-            
-        return list(descendant_ids)
+        # 定义递归部分
+        partition_cte = partition_cte.union_all(
+            session.query(Partition.id).filter(Partition.parent_id == partition_cte.c.id)
+        )
+        
+        # 执行查询并提取ID
+        all_ids = session.query(partition_cte.c.id).all()
+        return [i[0] for i in all_ids]
 
     def delete_partition(self, partition_id):
         """递归删除一个分区及其所有子分区，并将所有包含的项目移至回收站。"""
@@ -827,18 +807,23 @@ class DBManager:
         """获取每个分区的项目计数，并递归计算父分区的总数。"""
         with self.Session() as session:
             try:
+                # 优化: 一次性查询所有非删除项目，然后在内存中处理计数
                 base_query = session.query(ClipboardItem).filter(ClipboardItem.is_deleted != True)
                 
+                # 1. 直接获取每个分区的项目数 (partition_id -> count)
                 direct_counts = dict(base_query.with_entities(
                     ClipboardItem.partition_id, func.count(ClipboardItem.id)
                 ).group_by(ClipboardItem.partition_id).all())
                 
+                # 2. 未分类计数
                 uncategorized_count = direct_counts.pop(None, 0)
                 
+                # 3. 递归计算总数
                 total_counts = direct_counts.copy()
                 all_partitions = session.query(Partition).all()
                 partition_map = {p.id: p for p in all_partitions}
 
+                # 从子节点向父节点累加计数
                 for p in all_partitions:
                     direct_count = direct_counts.get(p.id, 0)
                     if direct_count > 0:

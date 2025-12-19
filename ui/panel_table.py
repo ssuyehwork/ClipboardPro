@@ -43,8 +43,8 @@ class TablePanel(QTableWidget):
         
         # 启用行号列（垂直表头）
         self.verticalHeader().setVisible(True)
-        # 核心修复：让行号列的宽度根据内容（例如从99变成100）自动调整
-        self.verticalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+        # 开启手动调整模式：允许用户通过鼠标拖拽调整行高
+        self.verticalHeader().setSectionResizeMode(QHeaderView.Interactive)
         # 修复：设置行号文本居中对齐
         self.verticalHeader().setDefaultAlignment(Qt.AlignCenter)
         self.verticalHeader().setDefaultSectionSize(25)

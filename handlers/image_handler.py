@@ -19,7 +19,7 @@ class ImageHandler(BaseHandler):
     """图片处理器"""
     
     def __init__(self):
-        self.priority = 10
+        super().__init__(priority=10) # 修正：必须调用基类初始化以获取 last_content 等属性
         # 修复：使用绝对路径，避免在不同工作目录下出错
         if getattr(sys, 'frozen', False):
             base_dir = os.path.dirname(sys.executable)

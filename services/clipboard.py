@@ -91,7 +91,8 @@ class ClipboardManager(QObject):
                         return False
             
             # 没有处理器能处理该数据
-            log.debug("没有合适的处理器")
+            formats = mime_data.formats()
+            log.debug(f"没有合适的处理器。可用格式: {list(formats)}")
             return False
             
         except Exception as e:

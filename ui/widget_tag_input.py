@@ -97,12 +97,16 @@ class TagChip(QFrame):
         layout.addWidget(self.lbl)
         
         self.btn = QPushButton("×")
-        self.btn.setFixedSize(16, 16)
+        self.btn.setObjectName("TagCloseButton")
+        self.btn.setFixedSize(14, 14) # 稍微减小尺寸以适配 24px 高度
         self.btn.setCursor(Qt.PointingHandCursor)
         self.btn.clicked.connect(self.remove_requested.emit)
         layout.addWidget(self.btn)
         
         self.setFixedHeight(24)
+        self.setMinimumWidth(40) # 仅设置最小宽度，允许其水平伸缩
+        self.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed) # 关键：让尺寸策略随内容伸缩
+        self.setAutoFillBackground(True)
         
     def text(self): 
         return self.lbl.text()
