@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
 import sys
-from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QListWidget, QLineEdit, QListWidgetItem, QHBoxLayout, QTreeWidget, QTreeWidgetItem)
-from PyQt5.QtCore import Qt, QTimer
+from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QListWidget, QLineEdit,
+                             QListWidgetItem, QHBoxLayout, QTreeWidget, QTreeWidgetItem,
+                             QPushButton, QStyle, QSpacerItem, QSizePolicy)
+from PyQt5.QtCore import Qt, QTimer, QPoint
 
 # 假设 data.database 在项目的 python-path 中
 from data.database import DBManager
@@ -22,6 +24,7 @@ QListWidget, QTreeWidget {
 
 QListWidget::item, QTreeWidget::item {
     padding: 8px;
+    outline: none; /* 移除虚线焦点框 */
 }
 
 QListWidget::item:selected, QTreeWidget::item:selected {
@@ -36,7 +39,62 @@ QLineEdit {
     padding: 6px;
     font-size: 16px;
 }
+
+/* --- 自定义标题栏样式 --- */
+CustomTitleBar {
+    background-color: #3C3C3C; /* 标题栏背景色 */
+    height: 30px;
+}
+
+CustomTitleBar QPushButton {
+    background-color: transparent;
+    border: none;
+    width: 25px;
+    height: 25px;
+    padding: 5px;
+}
+
+CustomTitleBar QPushButton:hover {
+    background-color: #555555;
+    border-radius: 4px;
+}
 """
+
+class CustomTitleBar(QWidget):
+    """自定义标题栏，支持拖动和自定义按钮。"""
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.parent_window = parent
+        self.layout = QHBoxLayout(self)
+        self.layout.setContentsMargins(5, 0, 5, 0) # 左右留边距，上下无
+        self.layout.setSpacing(5)
+
+        # 弹簧，将按钮推到右侧
+        spacer = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.layout.addSpacerItem(spacer)
+
+        # 创建按钮 (暂时用文字代替图标)
+        self.pin_button = QPushButton("P", self)
+        self.toggle_partition_button = QPushButton("E", self)
+        self.close_button = QPushButton("X", self)
+
+        # 添加到布局
+        self.layout.addWidget(self.pin_button)
+        self.layout.addWidget(self.toggle_partition_button)
+        self.layout.addWidget(self.close_button)
+
+        self.drag_position = QPoint()
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self.drag_position = event.globalPos() - self.parent_window.frameGeometry().topLeft()
+            event.accept()
+
+    def mouseMoveEvent(self, event):
+        if event.buttons() == Qt.LeftButton:
+            self.parent_window.move(event.globalPos() - self.drag_position)
+            event.accept()
+
 
 class QuickPanel(QWidget):
     def __init__(self, db_manager):
@@ -54,18 +112,35 @@ class QuickPanel(QWidget):
         self.list_widget.itemActivated.connect(self._on_item_activated)
         self.partition_tree.currentItemChanged.connect(self._on_partition_selection_changed)
 
-        # 初始化并加载数据
+        # 连接标题栏按钮信号
+        self.title_bar.pin_button.clicked.connect(self._toggle_stay_on_top)
+        self.title_bar.toggle_partition_button.clicked.connect(self.partition_tree.setVisible)
+        self.title_bar.close_button.clicked.connect(self.close)
+
         self._update_partition_tree()
-        # _update_list() 将在分区树加载并选中默认项后自动调用
+        self._setup_icons() # 设置图标
+        self._is_pinned = False # 初始为非置顶状态
 
     def _init_ui(self):
         self.setWindowTitle("Quick Panel")
-        self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Popup)
+        self.setWindowFlags(Qt.FramelessWindowHint | Qt.Popup) # 移除 StaysOnTopHint，交由按钮控制
 
-        self.main_layout = QHBoxLayout(self)
-        self.main_layout.setContentsMargins(5, 5, 5, 5)
-        self.main_layout.setSpacing(5)
+        # 主布局变为垂直
+        self.main_layout = QVBoxLayout(self)
+        self.main_layout.setContentsMargins(0, 0, 0, 0) # 无边距，让标题栏和内容区填满
+        self.main_layout.setSpacing(0)
 
+        # 1. 添加自定义标题栏
+        self.title_bar = CustomTitleBar(self)
+        self.main_layout.addWidget(self.title_bar)
+
+        # 2. 创建主内容区
+        content_widget = QWidget(self)
+        content_layout = QHBoxLayout(content_widget)
+        content_layout.setContentsMargins(5, 5, 5, 5)
+        content_layout.setSpacing(5)
+
+        # 2.1 左侧容器 (搜索框 + 列表)
         left_widget = QWidget(self)
         left_layout = QVBoxLayout(left_widget)
         left_layout.setContentsMargins(0, 0, 0, 0)
@@ -81,12 +156,16 @@ class QuickPanel(QWidget):
         left_layout.addWidget(self.search_box)
         left_layout.addWidget(self.list_widget)
 
-        self.main_layout.addWidget(left_widget, 3)
-
+        # 2.2 右侧分区树
         self.partition_tree = QTreeWidget(self)
         self.partition_tree.setHeaderHidden(True)
 
-        self.main_layout.addWidget(self.partition_tree, 1)
+        # 将左右两侧添加到内容区布局
+        content_layout.addWidget(left_widget, 3)
+        content_layout.addWidget(self.partition_tree, 1)
+
+        # 3. 将主内容区添加到主布局
+        self.main_layout.addWidget(content_widget)
 
         self.setStyleSheet(DARK_STYLESHEET)
         self.resize(600, 600)
@@ -96,22 +175,18 @@ class QuickPanel(QWidget):
 
     def _update_list(self):
         search_text = self.search_box.text()
-
         partition_filter = None
         current_partition = self.partition_tree.currentItem()
         if current_partition:
             partition_data = current_partition.data(0, Qt.UserRole)
             if partition_data and partition_data['type'] != 'all':
                 partition_filter = partition_data
-
         items = self.db.get_items(search=search_text, partition_filter=partition_filter, limit=100)
-
         self.list_widget.clear()
         for item in items:
             list_item = QListWidgetItem(item.content.split('\n')[0])
             list_item.setData(Qt.UserRole, item)
             self.list_widget.addItem(list_item)
-
         if self.list_widget.count() > 0:
             self.list_widget.setCurrentRow(0)
 
@@ -119,10 +194,8 @@ class QuickPanel(QWidget):
         self.partition_tree.clear()
         all_items_node = QTreeWidgetItem(self.partition_tree, ["全部"])
         all_items_node.setData(0, Qt.UserRole, {'type': 'all', 'id': -1})
-
         top_level_partitions = self.db.get_partitions_tree()
         self._add_partition_recursive(top_level_partitions, self.partition_tree)
-
         self.partition_tree.expandAll()
         self.partition_tree.setCurrentItem(all_items_node)
 
@@ -134,8 +207,25 @@ class QuickPanel(QWidget):
                 self._add_partition_recursive(partition.children, item)
 
     def _on_partition_selection_changed(self, current, previous):
-        """当分区选择改变时，更新剪贴板列表。"""
         self._update_list()
+
+    def _toggle_stay_on_top(self):
+        """切换窗口的置顶状态。"""
+        self._is_pinned = not self._is_pinned
+        if self._is_pinned:
+            self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
+            self.title_bar.pin_button.setIcon(self.style().standardIcon(QStyle.SP_DialogYesButton)) # 使用一个现有图标示意
+        else:
+            self.setWindowFlags(self.windowFlags() & ~Qt.WindowStaysOnTopHint)
+            self.title_bar.pin_button.setIcon(self.style().standardIcon(QStyle.SP_DialogNoButton)) # 使用一个现有图标示意
+        self.show() # 重新显示窗口以应用标志更改
+
+    def _setup_icons(self):
+        """为标题栏按钮设置图标。"""
+        # 使用QStyle提供的标准图标
+        self.title_bar.pin_button.setIcon(self.style().standardIcon(QStyle.SP_DialogNoButton))
+        self.title_bar.toggle_partition_button.setIcon(self.style().standardIcon(QStyle.SP_FileDialogDetailedView))
+        self.title_bar.close_button.setIcon(self.style().standardIcon(QStyle.SP_TitleBarCloseButton))
 
     def _on_item_activated(self, item):
         db_item = item.data(Qt.UserRole)
@@ -148,7 +238,6 @@ class QuickPanel(QWidget):
 
     def keyPressEvent(self, event):
         key = event.key()
-
         if key == Qt.Key_Escape:
             self.close()
         elif key in (Qt.Key_Up, Qt.Key_Down):
