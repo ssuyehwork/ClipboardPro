@@ -2,7 +2,7 @@
 import sys
 from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QListWidget, QLineEdit,
                              QListWidgetItem, QHBoxLayout, QTreeWidget, QTreeWidgetItem,
-                             QPushButton, QStyle, QSpacerItem, QSizePolicy)
+                             QPushButton, QStyle, QSpacerItem, QSizePolicy, QAction)
 from PyQt5.QtCore import Qt, QTimer, QPoint
 
 # 假设 data.database 在项目的 python-path 中
@@ -59,66 +59,7 @@ CustomTitleBar QPushButton:hover {
     border-radius: 4px;
 }
 
-/* --- 可清除输入框样式 --- */
-ClearableLineEdit {
-    background-color: #3C3C3C;
-    border: 1px solid #555;
-    border-radius: 4px;
-}
-
-ClearableLineEdit QLineEdit {
-    border: none; /* 内部输入框无边框 */
-}
-
-ClearableLineEdit QPushButton {
-    background-color: transparent;
-    border: none;
-    padding: 2px;
-}
-
-ClearableLineEdit QPushButton:hover {
-    background-color: #555555;
-    border-radius: 4px;
-}
 """
-
-class ClearableLineEdit(QWidget):
-    """一个带有清空按钮的自定义输入框控件。"""
-    def __init__(self, parent=None):
-        super().__init__(parent)
-
-        self.layout = QHBoxLayout(self)
-        self.layout.setContentsMargins(0, 0, 5, 0) # 右侧留出按钮空间
-        self.layout.setSpacing(0)
-
-        self.line_edit = QLineEdit(self)
-        self.clear_button = QPushButton(self)
-        self.clear_button.setIcon(self.style().standardIcon(QStyle.SP_DialogCloseButton))
-        self.clear_button.setCursor(Qt.ArrowCursor)
-
-        self.layout.addWidget(self.line_edit)
-        self.layout.addWidget(self.clear_button)
-
-        # 信号连接
-        self.clear_button.clicked.connect(self.line_edit.clear)
-        self.line_edit.textChanged.connect(self.update_clear_button_visibility)
-
-        # 初始状态
-        self.update_clear_button_visibility("")
-
-    def update_clear_button_visibility(self, text):
-        """根据文本内容更新清空按钮的可见性。"""
-        self.clear_button.setVisible(bool(text))
-
-    def text(self):
-        return self.line_edit.text()
-
-    def setPlaceholderText(self, text):
-        self.line_edit.setPlaceholderText(text)
-
-    def setFocus(self):
-        self.line_edit.setFocus()
-
 
 class CustomTitleBar(QWidget):
     """自定义标题栏，支持拖动和自定义按钮。"""
@@ -165,10 +106,14 @@ class QuickPanel(QWidget):
         self.search_timer.setSingleShot(True)
         self.search_timer.timeout.connect(self._update_list)
 
-        # 注意: textChanged 信号需要从内部的 line_edit 连接
-        self.search_box.line_edit.textChanged.connect(self._on_search_text_changed)
+        self.search_box.textChanged.connect(self._on_search_text_changed)
         self.list_widget.itemActivated.connect(self._on_item_activated)
         self.partition_tree.currentItemChanged.connect(self._on_partition_selection_changed)
+
+        # 清空按钮的逻辑
+        self.clear_action.triggered.connect(self.search_box.clear)
+        self.search_box.textChanged.connect(lambda text: self.clear_action.setVisible(bool(text)))
+        self.clear_action.setVisible(False) # 初始状态隐藏
 
         self.title_bar.pin_button.clicked.connect(self._toggle_stay_on_top)
         self.title_bar.toggle_partition_button.clicked.connect(self._toggle_partition_panel)
@@ -199,8 +144,13 @@ class QuickPanel(QWidget):
         left_layout.setContentsMargins(0, 0, 0, 0)
         left_layout.setSpacing(5)
 
-        self.search_box = ClearableLineEdit(self)
+        self.search_box = QLineEdit(self)
         self.search_box.setPlaceholderText("搜索...")
+
+        # 创建并添加清空动作
+        self.clear_action = QAction(self)
+        self.clear_action.setIcon(self.style().standardIcon(QStyle.SP_DialogCloseButton))
+        self.search_box.addAction(self.clear_action, QLineEdit.TrailingPosition)
 
         self.list_widget = QListWidget(self)
         self.list_widget.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
