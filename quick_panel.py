@@ -58,7 +58,67 @@ CustomTitleBar QPushButton:hover {
     background-color: #555555;
     border-radius: 4px;
 }
+
+/* --- 可清除输入框样式 --- */
+ClearableLineEdit {
+    background-color: #3C3C3C;
+    border: 1px solid #555;
+    border-radius: 4px;
+}
+
+ClearableLineEdit QLineEdit {
+    border: none; /* 内部输入框无边框 */
+}
+
+ClearableLineEdit QPushButton {
+    background-color: transparent;
+    border: none;
+    padding: 2px;
+}
+
+ClearableLineEdit QPushButton:hover {
+    background-color: #555555;
+    border-radius: 4px;
+}
 """
+
+class ClearableLineEdit(QWidget):
+    """一个带有清空按钮的自定义输入框控件。"""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+        self.layout = QHBoxLayout(self)
+        self.layout.setContentsMargins(0, 0, 5, 0) # 右侧留出按钮空间
+        self.layout.setSpacing(0)
+
+        self.line_edit = QLineEdit(self)
+        self.clear_button = QPushButton(self)
+        self.clear_button.setIcon(self.style().standardIcon(QStyle.SP_DialogCloseButton))
+        self.clear_button.setCursor(Qt.ArrowCursor)
+
+        self.layout.addWidget(self.line_edit)
+        self.layout.addWidget(self.clear_button)
+
+        # 信号连接
+        self.clear_button.clicked.connect(self.line_edit.clear)
+        self.line_edit.textChanged.connect(self.update_clear_button_visibility)
+
+        # 初始状态
+        self.update_clear_button_visibility("")
+
+    def update_clear_button_visibility(self, text):
+        """根据文本内容更新清空按钮的可见性。"""
+        self.clear_button.setVisible(bool(text))
+
+    def text(self):
+        return self.line_edit.text()
+
+    def setPlaceholderText(self, text):
+        self.line_edit.setPlaceholderText(text)
+
+    def setFocus(self):
+        self.line_edit.setFocus()
+
 
 class CustomTitleBar(QWidget):
     """自定义标题栏，支持拖动和自定义按钮。"""
@@ -66,19 +126,16 @@ class CustomTitleBar(QWidget):
         super().__init__(parent)
         self.parent_window = parent
         self.layout = QHBoxLayout(self)
-        self.layout.setContentsMargins(5, 0, 5, 0) # 左右留边距，上下无
+        self.layout.setContentsMargins(5, 0, 5, 0)
         self.layout.setSpacing(5)
 
-        # 弹簧，将按钮推到右侧
         spacer = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
         self.layout.addSpacerItem(spacer)
 
-        # 创建按钮
         self.pin_button = QPushButton(self)
         self.toggle_partition_button = QPushButton(self)
         self.close_button = QPushButton(self)
 
-        # 添加到布局
         self.layout.addWidget(self.pin_button)
         self.layout.addWidget(self.toggle_partition_button)
         self.layout.addWidget(self.close_button)
@@ -108,45 +165,41 @@ class QuickPanel(QWidget):
         self.search_timer.setSingleShot(True)
         self.search_timer.timeout.connect(self._update_list)
 
-        self.search_box.textChanged.connect(self._on_search_text_changed)
+        # 注意: textChanged 信号需要从内部的 line_edit 连接
+        self.search_box.line_edit.textChanged.connect(self._on_search_text_changed)
         self.list_widget.itemActivated.connect(self._on_item_activated)
         self.partition_tree.currentItemChanged.connect(self._on_partition_selection_changed)
 
-        # 连接标题栏按钮信号
         self.title_bar.pin_button.clicked.connect(self._toggle_stay_on_top)
         self.title_bar.toggle_partition_button.clicked.connect(self._toggle_partition_panel)
         self.title_bar.close_button.clicked.connect(self.close)
 
         self._update_partition_tree()
-        self._setup_icons() # 设置图标
-        self._is_pinned = False # 初始为非置顶状态
+        self._setup_icons()
+        self._is_pinned = False
 
     def _init_ui(self):
         self.setWindowTitle("Quick Panel")
-        self.setWindowFlags(Qt.FramelessWindowHint | Qt.Tool) # 修改为Tool类型，避免失去焦点时消失
+        self.setWindowFlags(Qt.FramelessWindowHint | Qt.Tool)
 
-        # 主布局变为垂直
         self.main_layout = QVBoxLayout(self)
-        self.main_layout.setContentsMargins(0, 0, 0, 0) # 无边距，让标题栏和内容区填满
+        self.main_layout.setContentsMargins(0, 0, 0, 0)
         self.main_layout.setSpacing(0)
 
-        # 1. 添加自定义标题栏
         self.title_bar = CustomTitleBar(self)
         self.main_layout.addWidget(self.title_bar)
 
-        # 2. 创建主内容区
         content_widget = QWidget(self)
         content_layout = QHBoxLayout(content_widget)
         content_layout.setContentsMargins(5, 5, 5, 5)
         content_layout.setSpacing(5)
 
-        # 2.1 左侧容器 (搜索框 + 列表)
         left_widget = QWidget(self)
         left_layout = QVBoxLayout(left_widget)
         left_layout.setContentsMargins(0, 0, 0, 0)
         left_layout.setSpacing(5)
 
-        self.search_box = QLineEdit(self)
+        self.search_box = ClearableLineEdit(self)
         self.search_box.setPlaceholderText("搜索...")
 
         self.list_widget = QListWidget(self)
@@ -156,15 +209,12 @@ class QuickPanel(QWidget):
         left_layout.addWidget(self.search_box)
         left_layout.addWidget(self.list_widget)
 
-        # 2.2 右侧分区树
         self.partition_tree = QTreeWidget(self)
         self.partition_tree.setHeaderHidden(True)
 
-        # 将左右两侧添加到内容区布局
         content_layout.addWidget(left_widget, 3)
         content_layout.addWidget(self.partition_tree, 1)
 
-        # 3. 将主内容区添加到主布局
         self.main_layout.addWidget(content_widget)
 
         self.setStyleSheet(DARK_STYLESHEET)
@@ -210,23 +260,19 @@ class QuickPanel(QWidget):
         self._update_list()
 
     def _toggle_partition_panel(self):
-        """切换分区面板的可见性。"""
         self.partition_tree.setVisible(not self.partition_tree.isVisible())
 
     def _toggle_stay_on_top(self):
-        """切换窗口的置顶状态。"""
         self._is_pinned = not self._is_pinned
         if self._is_pinned:
             self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
-            self.title_bar.pin_button.setIcon(self.style().standardIcon(QStyle.SP_DialogYesButton)) # 使用一个现有图标示意
+            self.title_bar.pin_button.setIcon(self.style().standardIcon(QStyle.SP_DialogYesButton))
         else:
             self.setWindowFlags(self.windowFlags() & ~Qt.WindowStaysOnTopHint)
-            self.title_bar.pin_button.setIcon(self.style().standardIcon(QStyle.SP_DialogNoButton)) # 使用一个现有图标示意
-        self.show() # 重新显示窗口以应用标志更改
+            self.title_bar.pin_button.setIcon(self.style().standardIcon(QStyle.SP_DialogNoButton))
+        self.show()
 
     def _setup_icons(self):
-        """为标题栏按钮设置图标。"""
-        # 使用QStyle提供的标准图标
         self.title_bar.pin_button.setIcon(self.style().standardIcon(QStyle.SP_DialogNoButton))
         self.title_bar.toggle_partition_button.setIcon(self.style().standardIcon(QStyle.SP_FileDialogDetailedView))
         self.title_bar.close_button.setIcon(self.style().standardIcon(QStyle.SP_TitleBarCloseButton))
