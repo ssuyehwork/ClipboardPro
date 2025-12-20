@@ -227,15 +227,15 @@ class QuickPanel(QWidget):
         self._is_pinned = not self._is_pinned
         if self._is_pinned:
             self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
-            self.title_bar.pin_button.setIcon(self.style().standardIcon(QStyle.SP_TitleBarPinButton))
+            self.title_bar.pin_button.setIcon(self.style().standardIcon(QStyle.SP_ArrowUp)) # 兼容性更好的向上箭头图标
         else:
             self.setWindowFlags(self.windowFlags() & ~Qt.WindowStaysOnTopHint)
-            self.title_bar.pin_button.setIcon(self.style().standardIcon(QStyle.SP_TitleBarUnpinButton))
+            self.title_bar.pin_button.setIcon(self.style().standardIcon(QStyle.SP_ArrowDown)) # 兼容性更好的向下箭头图标
         # 重新 show() 会导致窗口闪烁，体验不好，因此移除
         # self.show()
 
     def _setup_icons(self):
-        self.title_bar.pin_button.setIcon(self.style().standardIcon(QStyle.SP_TitleBarUnpinButton))
+        self.title_bar.pin_button.setIcon(self.style().standardIcon(QStyle.SP_ArrowDown)) # 初始状态为未置顶
         self.title_bar.toggle_partition_button.setIcon(self.style().standardIcon(QStyle.SP_FileDialogDetailedView))
         self.title_bar.close_button.setIcon(self.style().standardIcon(QStyle.SP_TitleBarCloseButton))
 
