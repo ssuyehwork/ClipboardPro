@@ -33,7 +33,7 @@ QTreeWidget::item {
 }
 
 QListWidget::item:selected, QTreeWidget::item:selected {
-    background-color: #4D4D4D; /* 更专业的灰色高亮 */
+    background-color: #2C3E50; /* 最终选择的专业石板蓝 */
     color: #FFFFFF;
 }
 
