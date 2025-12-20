@@ -9,7 +9,7 @@ from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                              QApplication, QShortcut, QSizeGrip, QMessageBox,
                              QAbstractItemView, QTableWidgetItem, QHeaderView, QMenu)
 from PyQt5.QtCore import Qt, QPoint, QTimer, QSettings
-from PyQt5.QtGui import QColor, QKeySequence
+from PyQt5.QtGui import QColor, QKeySequence, QImage
 from sqlalchemy.orm import joinedload
 
 # 核心逻辑
@@ -350,7 +350,7 @@ class MainWindow(QMainWindow):
                 if not self.preview_dlg:
                     self.preview_dlg = PreviewDialog(self)
                 
-                self.preview_dlg.load_data(item.content, item.item_type, item.file_path, item.image_path)
+                self.preview_dlg.load_data(item.content, item.item_type, item.file_path, item.image_path, item.data_blob)
                 self.preview_dlg.show()
                 self.preview_dlg.raise_()
                 self.preview_dlg.activateWindow()
@@ -1005,12 +1005,23 @@ class MainWindow(QMainWindow):
             from data.database import ClipboardItem
             obj = session.query(ClipboardItem).get(self.current_item_id)
             if obj:
-                # 使用标志位防止触发剪贴板事件
                 self._processing_clipboard = True
                 try:
-                    self.clipboard.setText(obj.content)
+                    if obj.item_type == 'image' and obj.data_blob:
+                        image = QImage()
+                        image.loadFromData(obj.data_blob)
+                        self.clipboard.setImage(image)
+                    elif obj.item_type == 'richtext' and obj.data_blob:
+                        from PyQt5.QtCore import QMimeData
+                        mime_data = QMimeData()
+                        mime_data.setHtml(obj.data_blob.decode('utf-8'))
+                        mime_data.setText(obj.content) # 包含纯文本版本
+                        self.clipboard.setMimeData(mime_data)
+                    else:
+                        self.clipboard.setText(obj.content)
                 finally:
                     self._processing_clipboard = False
+
                 if self.last_external_hwnd:
                     self.showMinimized()
                     try:
@@ -1076,7 +1087,8 @@ class MainWindow(QMainWindow):
                 partition_name=partition_name,
                 item_type=item_obj.item_type,
                 image_path=item_obj.image_path,
-                file_path=item_obj.file_path
+                file_path=item_obj.file_path,
+                image_blob=item_obj.data_blob
             )
             self.current_item_id = item_id
         session.close()

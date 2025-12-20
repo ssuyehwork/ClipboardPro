@@ -23,14 +23,15 @@ class ClipboardManager(QObject):
     def _register_handlers(self):
         """注册所有处理器，按优先级排序"""
         try:
-            from handlers import ImageHandler, FileHandler, URLHandler, TextHandler
+            from handlers import ImageHandler, FileHandler, URLHandler, RichTextHandler, TextHandler
             
             # 创建处理器实例
             self.handlers = [
-                ImageHandler(),   # 优先级 10 - 最高
-                FileHandler(),    # 优先级 20
-                URLHandler(),     # 优先级 30
-                TextHandler(),    # 优先级 40 - 最低（兜底）
+                ImageHandler(),     # 优先级 10
+                FileHandler(),      # 优先级 20
+                URLHandler(),       # 优先级 30
+                RichTextHandler(),  # 优先级 35
+                TextHandler(),      # 优先级 40 - 最低（兜底）
             ]
             
             # 按优先级排序（数字越小优先级越高）

@@ -8,11 +8,13 @@ from handlers.text_handler import TextHandler
 from handlers.file_handler import FileHandler
 from handlers.image_handler import ImageHandler
 from handlers.url_handler import URLHandler
+from handlers.richtext_handler import RichTextHandler
 
 __all__ = [
     'BaseHandler',
     'TextHandler',
     'FileHandler',
     'ImageHandler',
-    'URLHandler'
+    'URLHandler',
+    'RichTextHandler'
 ]

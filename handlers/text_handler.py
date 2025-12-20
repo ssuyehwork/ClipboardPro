@@ -22,7 +22,11 @@ class TextHandler(BaseHandler):
         )
     
     def can_handle(self, mime_data: QMimeData) -> bool:
-        """判断是否为纯文本（排除URL）"""
+        """判断是否为纯文本（排除URL和富文本）"""
+        # 如果包含HTML或图片，则让其他更高优先级的处理器处理
+        if mime_data.hasHtml() or mime_data.hasImage():
+            return False
+
         if not mime_data.hasText():
             return False
         

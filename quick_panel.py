@@ -5,6 +5,7 @@ from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QListWidget, QL
                              QListWidgetItem, QHBoxLayout, QTreeWidget, QTreeWidgetItem, 
                              QPushButton, QStyle, QSpacerItem, QSizePolicy, QAction)
 from PyQt5.QtCore import Qt, QTimer, QPoint
+from PyQt5.QtGui import QImage
 
 # 假设 data.database 在项目的 python-path 中
 from data.database import DBManager
@@ -207,7 +208,7 @@ class QuickPanel(QWidget):
         elif item.item_type == 'url' and item.url_domain:
             return f"[{item.url_domain}] {item.url_title or ''}"
         elif item.item_type == 'image':
-            return "[图片] " + os.path.basename(item.image_path) if item.image_path else "[图片]"
+            return item.content
         else: # text and fallback
             return item.content.replace('\n', ' ').replace('\r', '').strip()[:150]
 
@@ -252,7 +253,18 @@ class QuickPanel(QWidget):
         db_item = item.data(Qt.UserRole)
         if db_item:
             try:
-                QApplication.clipboard().setText(db_item.content)
+                if db_item.item_type == 'image' and db_item.data_blob:
+                    image = QImage()
+                    image.loadFromData(db_item.data_blob)
+                    QApplication.clipboard().setImage(image)
+                elif db_item.item_type == 'richtext' and db_item.data_blob:
+                    from PyQt5.QtCore import QMimeData
+                    mime_data = QMimeData()
+                    mime_data.setHtml(db_item.data_blob.decode('utf-8'))
+                    mime_data.setText(db_item.content)
+                    QApplication.clipboard().setMimeData(mime_data)
+                else:
+                    QApplication.clipboard().setText(db_item.content)
                 self.close()
             except Exception as e:
                 print(f"复制到剪贴板失败: {e}")

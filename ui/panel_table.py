@@ -201,7 +201,7 @@ class TablePanel(QTableWidget):
         elif item.item_type == 'url' and item.url_domain:
             return f"[{item.url_domain}] {item.url_title or ''}"
         elif item.item_type == 'image':
-            return "[图片] " + os.path.basename(item.image_path) if item.image_path else "[图片]"
+            return item.content
         else: # text and fallback
             return item.content.replace('\n', ' ').replace('\r', '').strip()[:150]
 

@@ -203,28 +203,30 @@ class PreviewDialog(QDialog):
 
         return super().eventFilter(source, event)
 
-    def load_data(self, content, item_type, file_path=None, image_path=None):
+    def load_data(self, content, item_type, file_path=None, image_path=None, image_blob=None):
         self.clear_state()
         
-        final_image_path = None
-        if image_path: final_image_path = image_path
-        elif file_path:
-            import os
-            ext = os.path.splitext(file_path)[1].lower()
-            if ext in ['.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp']:
-                final_image_path = file_path
-        
-        if final_image_path:
-            pixmap = QPixmap(final_image_path)
-            if not pixmap.isNull():
-                self.mode = 'image'
-                self.original_pixmap = pixmap
-                self.scroll_area.show()
-                self.controls.show()
-                self.fit_to_window(fast_mode=True) 
-                self.update_info_label()
-                self.scroll_area.setFocus()
-                return
+        pixmap = QPixmap()
+        can_show_image = False
+
+        if item_type == 'image':
+            if image_blob:
+                can_show_image = pixmap.loadFromData(image_blob)
+            else: # 兼容旧数据
+                import os
+                path_to_try = image_path or file_path
+                if path_to_try and os.path.exists(path_to_try):
+                    can_show_image = pixmap.load(path_to_try)
+
+        if can_show_image:
+            self.mode = 'image'
+            self.original_pixmap = pixmap
+            self.scroll_area.show()
+            self.controls.show()
+            self.fit_to_window(fast_mode=True)
+            self.update_info_label()
+            self.scroll_area.setFocus()
+            return
 
         self.mode = 'text'
         self.text_preview.setPlainText(content)
