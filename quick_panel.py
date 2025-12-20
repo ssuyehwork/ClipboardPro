@@ -22,8 +22,12 @@ QListWidget, QTreeWidget {
     padding: 5px;
 }
 
-QListWidget::item, QTreeWidget::item {
-    padding: 8px;
+QListWidget::item {
+    padding: 8px; /* 左侧列表保持原间距 */
+}
+
+QTreeWidget::item {
+    padding: 4px; /* 右侧分区列表使用更紧凑的间距 */
 }
 
 QListWidget::item:selected, QTreeWidget::item:selected {
