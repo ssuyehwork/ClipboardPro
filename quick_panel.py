@@ -27,13 +27,13 @@ QListWidget::item {
 }
 
 QTreeWidget::item {
-    padding-top: 3px;    /* 适中的垂直间距 */
-    padding-bottom: 3px;
+    padding-top: 2px;    /* 最终确定的紧凑间距 */
+    padding-bottom: 2px;
     padding-left: 6px;   /* 保持一定的水平间距 */
 }
 
 QListWidget::item:selected, QTreeWidget::item:selected {
-    background-color: #555555;
+    background-color: #4D4D4D; /* 更专业的灰色高亮 */
     color: #FFFFFF;
 }
 
