@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import sys
+import os
 from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QListWidget, QLineEdit, 
                              QListWidgetItem, QHBoxLayout, QTreeWidget, QTreeWidgetItem, 
                              QPushButton, QStyle, QSpacerItem, QSizePolicy, QAction)
@@ -191,11 +192,24 @@ class QuickPanel(QWidget):
         items = self.db.get_items(search=search_text, partition_filter=partition_filter, limit=100)
         self.list_widget.clear()
         for item in items:
-            list_item = QListWidgetItem(item.content.split('\n')[0])
-            list_item.setData(Qt.UserRole, item)
+            display_text = self._get_content_display(item)
+            list_item = QListWidgetItem(display_text)
+            list_item.setData(Qt.UserRole, item) # 原始数据储存在这里
+            list_item.setToolTip(item.content) # 添加悬浮提示
             self.list_widget.addItem(list_item)
         if self.list_widget.count() > 0:
             self.list_widget.setCurrentRow(0)
+
+    def _get_content_display(self, item):
+        """根据项目类型获取用于在列表中显示的文本。"""
+        if item.item_type == 'file' and item.file_path:
+            return os.path.basename(item.file_path)
+        elif item.item_type == 'url' and item.url_domain:
+            return f"[{item.url_domain}] {item.url_title or ''}"
+        elif item.item_type == 'image':
+            return "[图片] " + os.path.basename(item.image_path) if item.image_path else "[图片]"
+        else: # text and fallback
+            return item.content.replace('\n', ' ').replace('\r', '').strip()[:150]
 
     def _update_partition_tree(self):
         self.partition_tree.clear()
