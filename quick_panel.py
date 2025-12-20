@@ -32,7 +32,9 @@ QTreeWidget::item {
     padding-left: 6px;   /* 保持一定的水平间距 */
 }
 
-QListWidget::item:selected, QTreeWidget::item:selected {
+QListWidget::item:selected, QTreeWidget::item:selected,
+QListWidget::item:selected:active, QTreeWidget::item:selected:active,
+QListWidget::item:selected:focus, QTreeWidget::item:selected:focus {
     background-color: #4D4D4D; /* 更专业的灰色高亮 */
     color: #FFFFFF;
 }
