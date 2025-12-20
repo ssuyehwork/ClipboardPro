@@ -153,7 +153,9 @@ STYLESHEET = """
         border-radius: 0px;
     }
 
-    QTreeWidget::item:selected, QListWidget::item:selected {
+    QTreeWidget::item:selected, QListWidget::item:selected,
+    QTreeWidget::item:selected:active, QListWidget::item:selected:active,
+    QTreeWidget::item:selected:focus, QListWidget::item:selected:focus {
         background-color: #555555;
     }
     QTreeWidget::item:hover, QListWidget::item:hover {
