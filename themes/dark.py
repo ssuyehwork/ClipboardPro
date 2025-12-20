@@ -156,7 +156,7 @@ STYLESHEET = """
     QTreeWidget::item:selected, QListWidget::item:selected,
     QTreeWidget::item:selected:active, QListWidget::item:selected:active,
     QTreeWidget::item:selected:focus, QListWidget::item:selected:focus {
-        background-color: #555555;
+        background-color: #4D4D4D;
     }
     QTreeWidget::item:hover, QListWidget::item:hover {
         background-color: #4a4a4a;
