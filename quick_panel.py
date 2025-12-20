@@ -32,9 +32,13 @@ QTreeWidget::item {
     padding-left: 6px;   /* 保持一定的水平间距 */
 }
 
-QListWidget::item:selected, QTreeWidget::item:selected {
-    background-color: #4D4D4D; /* 更专业的灰色高亮 */
+QListWidget::item:selected, QTreeWidget::item:selected,
+QListWidget::item:selected:active, QTreeWidget::item:selected:active,
+QListWidget::item:selected:focus, QTreeWidget::item:selected:focus {
+    background-color: #4A4A4A; /* 用户指定的深灰色 */
     color: #FFFFFF;
+    border: none; /* 确保没有系统默认边框 */
+    outline: none; /* 确保没有系统默认轮廓 */
 }
 
 QLineEdit {
@@ -223,14 +227,15 @@ class QuickPanel(QWidget):
         self._is_pinned = not self._is_pinned
         if self._is_pinned:
             self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
-            self.title_bar.pin_button.setIcon(self.style().standardIcon(QStyle.SP_DialogYesButton))
+            self.title_bar.pin_button.setIcon(self.style().standardIcon(QStyle.SP_TitleBarPinButton))
         else:
             self.setWindowFlags(self.windowFlags() & ~Qt.WindowStaysOnTopHint)
-            self.title_bar.pin_button.setIcon(self.style().standardIcon(QStyle.SP_DialogNoButton))
-        self.show()
+            self.title_bar.pin_button.setIcon(self.style().standardIcon(QStyle.SP_TitleBarUnpinButton))
+        # 重新 show() 会导致窗口闪烁，体验不好，因此移除
+        # self.show()
 
     def _setup_icons(self):
-        self.title_bar.pin_button.setIcon(self.style().standardIcon(QStyle.SP_DialogNoButton))
+        self.title_bar.pin_button.setIcon(self.style().standardIcon(QStyle.SP_TitleBarUnpinButton))
         self.title_bar.toggle_partition_button.setIcon(self.style().standardIcon(QStyle.SP_FileDialogDetailedView))
         self.title_bar.close_button.setIcon(self.style().standardIcon(QStyle.SP_TitleBarCloseButton))
 
