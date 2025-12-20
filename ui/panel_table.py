@@ -170,8 +170,13 @@ class TablePanel(QTableWidget):
                 state_item.setIcon(get_color_icon(item.custom_color))
             self.setItem(row, 0, state_item)
             
+            # 内容列 (优化后)
+            content_display = self._get_content_display(item)
+            content_item = QTableWidgetItem(content_display)
+            content_item.setToolTip(item.content)  # 设置悬浮提示为完整内容
+            self.setItem(row, 1, content_item)
+
             # 其他列
-            self.setItem(row, 1, QTableWidgetItem(item.content.replace('\\n', ' ')[:100]))
             self.setItem(row, 2, QTableWidgetItem(item.note))
             self.setItem(row, 3, QTableWidgetItem("★" * item.star_level))
             self.setItem(row, 4, QTableWidgetItem(str(len(item.content)))) # 简单用长度代替
@@ -188,6 +193,17 @@ class TablePanel(QTableWidget):
                 if it: it.setTextAlignment(align)
 
         self.blockSignals(False)
+
+    def _get_content_display(self, item):
+        """根据项目类型获取用于在表格中显示的内容文本。"""
+        if item.item_type == 'file' and item.file_path:
+            return os.path.basename(item.file_path)
+        elif item.item_type == 'url' and item.url_domain:
+            return f"[{item.url_domain}] {item.url_title or ''}"
+        elif item.item_type == 'image':
+            return "[图片] " + os.path.basename(item.image_path) if item.image_path else "[图片]"
+        else: # text and fallback
+            return item.content.replace('\n', ' ').replace('\r', '').strip()[:150]
 
     def _get_type_icon(self, item):
         if item.item_type == 'url': return "🔗"
