@@ -5,7 +5,7 @@ import hashlib
 import logging
 from datetime import datetime, timedelta, time
 from sqlalchemy import create_engine, Column, Integer, String, Text, Boolean, DateTime, ForeignKey, Table, Index, Float, func, or_, exists, and_, BLOB
-from sqlalchemy.orm import declarative_base, relationship, sessionmaker, joinedload, subqueryload
+from sqlalchemy.orm import declarative_base, relationship, sessionmaker, joinedload, subqueryload, defer
 
 log = logging.getLogger("Database")
 Base = declarative_base()
@@ -271,7 +271,11 @@ class DBManager:
 
     def _build_query(self, session, filters=None, search="", selected_tags=None, sort_mode="manual", date_filter=None, date_modify_filter=None, partition_filter=None, include_deleted=False):
         log.debug(f"🔍 构建查询: filters={filters}, search='{search}', tags={selected_tags}, sort={sort_mode}, date={date_filter}, date_modify={date_modify_filter}, partition={partition_filter}, deleted={include_deleted}")
-        q = session.query(ClipboardItem).options(joinedload(ClipboardItem.tags))
+        q = session.query(ClipboardItem).options(
+            joinedload(ClipboardItem.tags),
+            defer(ClipboardItem.data_blob),
+            defer(ClipboardItem.thumbnail_blob)
+        )
 
         # 核心回收站逻辑
         if include_deleted:
