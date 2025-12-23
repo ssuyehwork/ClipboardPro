@@ -55,7 +55,6 @@ class MainWindow(QMainWindow):
         
         # 1. 无边框设置
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowSystemMenuHint | Qt.WindowMinimizeButtonHint | Qt.WindowMaximizeButtonHint)
-        self.setAttribute(Qt.WA_TranslucentBackground)
         
         # 边缘判定范围 (加大到10px确保能点到)
         self.border_width = 10
@@ -103,7 +102,7 @@ class MainWindow(QMainWindow):
         self.central_widget = QWidget()
         self.setCentralWidget(self.central_widget)
         self.outer_layout = QVBoxLayout(self.central_widget)
-        self.outer_layout.setContentsMargins(10, 10, 10, 10)  # 修改为10px
+        self.outer_layout.setContentsMargins(5, 5, 5, 5)  # 修改为5px
         self.outer_layout.setSpacing(0)
         
         # 2. 视觉容器 - 添加圆角
