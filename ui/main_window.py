@@ -55,6 +55,7 @@ class MainWindow(QMainWindow):
         
         # 1. 无边框设置
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowSystemMenuHint | Qt.WindowMinimizeButtonHint | Qt.WindowMaximizeButtonHint)
+        self.setAttribute(Qt.WA_TranslucentBackground)
         
         # 边缘判定范围 (加大到10px确保能点到)
         self.border_width = 10
@@ -376,7 +377,7 @@ class MainWindow(QMainWindow):
                 
                 w = self.width()
                 h = self.height()
-                m = 10  # 边缘宽度改为10像素
+                m = 5  # 边缘宽度改为5像素
                 
                 is_left = pos.x() < m
                 is_right = pos.x() > w - m
