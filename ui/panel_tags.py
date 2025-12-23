@@ -17,7 +17,7 @@ class TagPanel(QWidget):
         self.setObjectName("TagPanel")
         
         self.layout = QVBoxLayout(self)
-        self.layout.setContentsMargins(12, 22, 12, 12)
+        self.layout.setContentsMargins(10, 22, 10, 12) # 左右边距设为 10，保持与左侧面板一致
         self.layout.setSpacing(10)
         
         # 1. 输入组件（上下结构）
@@ -92,11 +92,13 @@ class TagPanel(QWidget):
             self.input_widget.set_focus()
 
     def _position_popup(self):
-        """定位弹窗到输入组件正下方"""
-        pos = self.input_widget.mapToGlobal(QPoint(0, self.input_widget.height() + 4))
-        self.popup.resize(self.input_widget.width(), 300)
+        """定位弹窗到输入组件正下方 (考虑阴影边距)"""
+        if not self.isVisible(): return
+        # 补偿 10px 的阴影外边距，确保内容对齐输入框
+        pos = self.input_widget.mapToGlobal(QPoint(-10, self.input_widget.height() - 8))
+        self.popup.resize(self.input_widget.width() + 20, 320) # 增加宽度和高度以容纳阴影
         self.popup.move(pos)
-
+        self.popup.raise_()
     def _on_popup_tag_toggle(self, tag_name, checked):
         """
         勾选历史标签 -> 放入暂存区（不提交）
@@ -119,9 +121,11 @@ class TagPanel(QWidget):
         self.popup.hide()
 
     def _on_chips_updated(self, tags):
-        """暂存区变动 -> 刷新弹窗状态"""
+        """暂存区变动 -> 刷新弹窗内容并动态重定位"""
         if self.popup.isVisible():
             self.popup.load_history(self.cached_tags, tags)
+            # 关键：当标签增减导致输入框高度变化时，必须重新计算弹窗位置，防止遮挡
+            QTimer.singleShot(10, self._position_popup) 
 
     def _on_tags_committed(self, tags):
         """

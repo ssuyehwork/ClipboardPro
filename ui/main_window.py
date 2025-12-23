@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 import logging
 import ctypes
 import os
@@ -154,8 +154,8 @@ class MainWindow(QMainWindow):
         self.dock_filter = QDockWidget("筛选器", self.dock_container)
         self.dock_filter.setObjectName("DockFilter")
         self.dock_filter.setTitleBarWidget(CustomDockTitleBar("筛选器", self.dock_filter, self.dock_container))
-        self.dock_filter.setFeatures(QDockWidget.DockWidgetMovable | QDockWidget.DockWidgetFloatable | QDockWidget.DockWidgetClosable)
-        self.dock_filter.setAllowedAreas(Qt.LeftDockWidgetArea | Qt.RightDockWidgetArea | Qt.BottomDockWidgetArea)
+        self.dock_filter.setFeatures(QDockWidget.AllDockWidgetFeatures) # 启用所有特征，包括悬浮可调整大小
+        self.dock_filter.setAllowedAreas(Qt.LeftDockWidgetArea | Qt.RightDockWidgetArea)
         
         self.filter_panel = FilterPanel() 
         self.filter_panel.filterChanged.connect(lambda: self.load_data(reset_page=True))
@@ -166,8 +166,8 @@ class MainWindow(QMainWindow):
         self.dock_partition = QDockWidget("分区组", self.dock_container)
         self.dock_partition.setObjectName("DockPartition")
         self.dock_partition.setTitleBarWidget(CustomDockTitleBar("分区组", self.dock_partition, self.dock_container))
-        self.dock_partition.setFeatures(QDockWidget.DockWidgetMovable | QDockWidget.DockWidgetFloatable | QDockWidget.DockWidgetClosable)
-        self.dock_partition.setAllowedAreas(Qt.LeftDockWidgetArea | Qt.RightDockWidgetArea | Qt.BottomDockWidgetArea)
+        self.dock_partition.setFeatures(QDockWidget.AllDockWidgetFeatures)
+        self.dock_partition.setAllowedAreas(Qt.LeftDockWidgetArea | Qt.RightDockWidgetArea)
         self.partition_panel = PartitionPanel(self.db)
         self.partition_panel.partitionSelectionChanged.connect(lambda: self.load_data(reset_page=True))
         
@@ -182,8 +182,8 @@ class MainWindow(QMainWindow):
         self.dock_tags = QDockWidget("标签", self.dock_container)
         self.dock_tags.setObjectName("DockTags")
         self.dock_tags.setTitleBarWidget(CustomDockTitleBar("标签", self.dock_tags, self.dock_container))
-        self.dock_tags.setFeatures(QDockWidget.DockWidgetMovable | QDockWidget.DockWidgetFloatable | QDockWidget.DockWidgetClosable)
-        self.dock_tags.setAllowedAreas(Qt.LeftDockWidgetArea | Qt.RightDockWidgetArea | Qt.BottomDockWidgetArea)
+        self.dock_tags.setFeatures(QDockWidget.AllDockWidgetFeatures)
+        self.dock_tags.setAllowedAreas(Qt.LeftDockWidgetArea | Qt.RightDockWidgetArea)
         
         self.tag_panel = TagPanel()
         self.tag_panel.setEnabled(False)  # 默认禁用
@@ -193,15 +193,15 @@ class MainWindow(QMainWindow):
         self.dock_tags.setWidget(self.tag_panel)
         self.dock_container.addDockWidget(Qt.LeftDockWidgetArea, self.dock_tags)
         
-        self.dock_container.splitDockWidget(self.dock_filter, self.dock_partition, Qt.Vertical)
-        self.dock_container.splitDockWidget(self.dock_partition, self.dock_tags, Qt.Vertical)
+        self.dock_container.splitDockWidget(self.dock_filter, self.dock_partition, Qt.Horizontal)
+        self.dock_container.splitDockWidget(self.dock_partition, self.dock_tags, Qt.Horizontal)
 
         # --- 右 Dock ---
         self.dock_detail = QDockWidget("详细信息", self.dock_container)
         self.dock_detail.setObjectName("DockDetail")
         self.dock_detail.setTitleBarWidget(CustomDockTitleBar("详细信息", self.dock_detail, self.dock_container))
-        self.dock_detail.setFeatures(QDockWidget.DockWidgetMovable | QDockWidget.DockWidgetFloatable | QDockWidget.DockWidgetClosable)
-        self.dock_detail.setAllowedAreas(Qt.LeftDockWidgetArea | Qt.RightDockWidgetArea | Qt.BottomDockWidgetArea)
+        self.dock_detail.setFeatures(QDockWidget.AllDockWidgetFeatures)
+        self.dock_detail.setAllowedAreas(Qt.LeftDockWidgetArea | Qt.RightDockWidgetArea)
         
         self.detail_panel = DetailPanel() 
         self.detail_panel.update_note_signal.connect(self.save_note)
@@ -210,7 +210,7 @@ class MainWindow(QMainWindow):
         self.dock_detail.setWidget(self.detail_panel)
         self.dock_container.addDockWidget(Qt.RightDockWidgetArea, self.dock_detail)
         
-        # --- 中间表格 ---
+        # --- 数据列表 (还原至中央区域) ---
         self.table = TablePanel()
         # 设置表格的大小策略
         from PyQt5.QtWidgets import QSizePolicy
@@ -237,19 +237,22 @@ class MainWindow(QMainWindow):
         self.tag_panel.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
         self.detail_panel.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
         
-        # 设置Dock面板的大小约束
-        # 设置Dock面板的大小约束
-        self.dock_filter.setMinimumWidth(230)
-        self.dock_filter.setMaximumWidth(400)
-
-        self.dock_partition.setMinimumWidth(230)
-        self.dock_partition.setMaximumWidth(400)
+        # 设置Dock面板的大小约束 - 恢复最小宽度至 230px
+        log.info("📏 恢复面板最小宽度限制至 230px...")
+        self.dock_container.setMouseTracking(True)
         
-        self.dock_tags.setMinimumWidth(230)
-        self.dock_tags.setMaximumWidth(400)
+        # 统一将最小宽度恢复为 230
+        min_w = 230
+        self.dock_filter.setMinimumWidth(min_w)
+        self.dock_partition.setMinimumWidth(min_w)
+        self.dock_tags.setMinimumWidth(min_w)
+        self.dock_detail.setMinimumWidth(min_w)
         
-        self.dock_detail.setMinimumWidth(230)
-        self.dock_detail.setMaximumWidth(450)
+        # 显式移除最大宽度限制
+        self.dock_filter.setMaximumWidth(16777215)
+        self.dock_partition.setMaximumWidth(16777215)
+        self.dock_tags.setMaximumWidth(16777215)
+        self.dock_detail.setMaximumWidth(16777215)
         
         # 移除固定的初始宽度设置，改由 restore_window_state 按比例控制
         
@@ -285,11 +288,13 @@ class MainWindow(QMainWindow):
         
         self.inner_layout.addWidget(self.bottom_bar)
         
-        # 连接自动保存信号
-        log.info("🔗 连接自动保存信号...")
+        # 连接自动保存与智能布局信号
+        log.info("🔗 连接自动保存与智能布局信号...")
         for dock in [self.dock_filter, self.dock_partition, self.dock_tags, self.dock_detail]:
             # 当Dock的停靠位置改变时，触发状态保存
             dock.dockLocationChanged.connect(lambda: self.schedule_save_state())
+            # 当Dock可见性改变时（拖出或关闭），执行智能布局调整
+            dock.visibilityChanged.connect(self.handle_dock_visibility_changed)
         
         # 当表格列宽或顺序改变时，触发状态保存
         # 当表格列宽或顺序改变时，触发状态保存
@@ -456,8 +461,8 @@ class MainWindow(QMainWindow):
     def smart_delete(self, force_warn=False):
         """
         智能删除逻辑
-        force_warn=False (Del): 静默删除，自动跳过收藏/锁定
-        force_warn=True (Ctrl+Shift+Del): 警告删除，自动跳过收藏/锁定
+        - 在常规视图：将项目移动到回收站
+        - 在回收站视图：将项目永久删除
         """
         rows = self.table.selectionModel().selectedRows()
         if not rows: return
@@ -469,7 +474,10 @@ class MainWindow(QMainWindow):
             if item and item.text(): ids.append(int(item.text()))
         if not ids: return
         
-        # 2. 检查属性 (需要查询数据库)
+        # 2. 检查视图状态
+        is_in_trash = getattr(self.table, 'is_trash_view', False)
+        
+        # 3. 检查属性 (查询数据库)
         session = self.db.get_session()
         from data.database import ClipboardItem
         items = session.query(ClipboardItem).filter(ClipboardItem.id.in_(ids)).all()
@@ -478,7 +486,7 @@ class MainWindow(QMainWindow):
         skipped_count = 0
         
         for item in items:
-            # 核心规则: 只有 非收藏 且 非锁定 才能删除
+            # 只有非收藏且非锁定的项目可以被移动/删除
             if item.is_favorite or item.is_locked:
                 skipped_count += 1
             else:
@@ -486,25 +494,36 @@ class MainWindow(QMainWindow):
         session.close()
         
         if not deletable_ids:
-            self.statusBar().showMessage(f"⚠️ 选中的 {len(ids)} 个项目均被锁定或收藏，无法删除", 3000)
+            self.statusBar().showMessage(f"⚠️ 选中的 {len(ids)} 个项目均被锁定或收藏，操作已取消", 3000)
             return
 
-        # 3. 执行删除
-        if force_warn:
-            # Ctrl+Shift+Del: 强制警告
-            msg = f"确定要移动这 {len(deletable_ids)} 个项目到回收站吗?\n(已自动跳过 {skipped_count} 个收藏/锁定项)"
-            if QMessageBox.question(self, "确认移动", msg, QMessageBox.Yes | QMessageBox.No) != QMessageBox.Yes:
+        # 4. 执行删除逻辑
+        if is_in_trash:
+            # 回收站内：永久删除 (强制确认)
+            msg = f"确定要【永久删除】这 {len(deletable_ids)} 个项目吗？\n该操作不可撤销！"
+            if skipped_count > 0:
+                msg += f"\n(已自动跳过 {skipped_count} 个受保护的项目)"
+                
+            if QMessageBox.warning(self, "永久删除确认", msg, QMessageBox.Yes | QMessageBox.No, QMessageBox.No) == QMessageBox.Yes:
+                self.db.delete_items_permanently(deletable_ids)
+                self.statusBar().showMessage(f"🔥 已永久删除 {len(deletable_ids)} 项", 3000)
+            else:
                 return
-        
-        # 执行移动到回收站
-        self.db.move_items_to_trash(deletable_ids)
+        else:
+            # 常规视图：移至回收站
+            if force_warn or len(deletable_ids) > 10: # 大批量删除时也提示一下
+                msg = f"确定要将这 {len(deletable_ids)} 个项目移动到回收站吗?"
+                if skipped_count > 0:
+                    msg += f"\n(已自动跳过 {skipped_count} 个受保护项目)"
+                if QMessageBox.question(self, "确认删除", msg, QMessageBox.Yes | QMessageBox.No) != QMessageBox.Yes:
+                    return
+            
+            self.db.move_items_to_trash(deletable_ids)
+            self.statusBar().showMessage(f"✅ 已移动 {len(deletable_ids)} 项到回收站", 3000)
+
+        # 5. 刷新界面
         self.load_data()
         self.partition_panel.refresh_partitions()
-        
-        msg = f"✅ 已移动 {len(deletable_ids)} 项到回收站"
-        if skipped_count > 0:
-            msg += f" (跳过 {skipped_count} 个保护项)"
-        self.statusBar().showMessage(msg, 3000)
 
     def batch_set_star_shortcut(self, lvl):
         rows = self.table.selectionModel().selectedRows()
@@ -571,8 +590,6 @@ class MainWindow(QMainWindow):
             if right_docks:
                 self.dock_container.resizeDocks(right_docks, [right_width] * len(right_docks), Qt.Horizontal)
 
-        # (已移除) 不再需要强制取消标签页
-        
         # 恢复置顶状态
         if s.value("is_pinned", False, type=bool):
             self.toggle_pin(True)
@@ -586,8 +603,8 @@ class MainWindow(QMainWindow):
         self.dock_detail.setVisible(True)
         
         # 关键修复：恢复状态后，重新应用允许停靠区域的限制
-        # 防止保存的状态（可能包含所有区域）覆盖了代码中的限制
-        areas = Qt.LeftDockWidgetArea | Qt.RightDockWidgetArea | Qt.BottomDockWidgetArea
+        # 彻底禁止停靠在上方和下方区域，仅保留左右停靠权限
+        areas = Qt.LeftDockWidgetArea | Qt.RightDockWidgetArea
         self.dock_filter.setAllowedAreas(areas)
         self.dock_partition.setAllowedAreas(areas)
         self.dock_tags.setAllowedAreas(areas)
@@ -621,6 +638,34 @@ class MainWindow(QMainWindow):
             if align := s.value(f"col_{i}_align"): self.col_alignments[i] = int(align)
         theme = s.value("current_theme", "dark")
         self.apply_theme(theme)
+
+    def handle_dock_visibility_changed(self, visible):
+        """
+        处理面板可见性变化（隐藏或拖出），确保中心区域优先扩张，而不是其他侧栏面板。
+        """
+        # 如果是变为不可见（拖出或关闭）
+        if not visible:
+            log.info("智能布局触发：侧栏变动，正在通过中心扩张回收空间...")
+            
+            # 记录当前剩余可见 Dock 的实际宽度（防止它们因为邻居消失突然变宽）
+            left_docks = [d for d in [self.dock_filter, self.dock_partition, self.dock_tags] if d.isVisible() and not d.isFloating()]
+            right_docks = [d for d in [self.dock_detail] if d.isVisible() and not d.isFloating()]
+            
+            # 使用 resizeDocks 维持现状（即不让它们变宽，从而迫使中间区域增大）
+            # 延迟一小段时间执行，等待 Dock 状态真正平衡
+            QTimer.singleShot(10, lambda: self._do_smart_resize(left_docks, right_docks))
+
+    def _do_smart_resize(self, left_docks, right_docks):
+        try:
+            if left_docks:
+                # 重新应用它们当前的宽度，防止其扩张
+                widths = [d.width() for d in left_docks]
+                self.dock_container.resizeDocks(left_docks, widths, Qt.Horizontal)
+            if right_docks:
+                widths = [d.width() for d in right_docks]
+                self.dock_container.resizeDocks(right_docks, widths, Qt.Horizontal)
+        except Exception as e:
+            log.debug(f"智能布局调整略过: {e}")
 
     def closeEvent(self, e): self.save_window_state(); e.accept()
 
@@ -679,12 +724,12 @@ class MainWindow(QMainWindow):
             search = self.title_bar.get_search_text()
             partition_filter = self.partition_panel.get_current_selection()
             
-            # 根据是否在回收站视图中，切换表格的选择模式并设置状态
+            # 彻底恢复多选功能：无论是否在回收站，均允许 ExtendedSelection (Shift/Ctrl+点击)
+            self.table.setSelectionMode(QAbstractItemView.ExtendedSelection)
+            
             if partition_filter and partition_filter.get('type') == 'trash':
-                self.table.setSelectionMode(QAbstractItemView.ExtendedSelection)
                 self.table.is_trash_view = True
             else:
-                self.table.setSelectionMode(QAbstractItemView.SingleSelection)
                 self.table.is_trash_view = False
 
             log.info(f"🔍 筛选条件: 星级={stars}, 颜色={colors}, 类型={types}, 标签={tags}, 创建日期={date_filter}, 修改日期={date_modify_filter}, 搜索={search}, 显示数量={self.page_size}")
@@ -984,17 +1029,17 @@ class MainWindow(QMainWindow):
     def update_detail_panel(self):
         rows = self.table.selectionModel().selectedRows()
 
-        # 核心逻辑：根据是否有选中行，更新标签面板和详细信息面板中输入框的可用状态
+        # 核心逻辑：根据是否有选中行，更新左侧标签面板的可用状态
         has_selection = bool(rows)
         self.tag_panel.setEnabled(has_selection)
-        self.detail_panel.tag_input.setEnabled(has_selection)
+        # DetailPanel 的交互组件状态由其内部的 load_item/clear 自动切换
 
         if not rows:
             self.detail_panel.clear()
             return
         
         # 添加空值检查，修复ID列索引
-        item = self.table.item(rows[0].row(), 8)  # ID列从9改为8
+        item = self.table.item(rows[0].row(), 8)
         if not item or not item.text():
             log.warning("⚠️ 选中行的ID列为空")
             return
@@ -1003,15 +1048,27 @@ class MainWindow(QMainWindow):
         log.debug(f"📋 更新详情面板，项目ID: {item_id}")
         session = self.db.get_session()
         from data.database import ClipboardItem
+        # 修复: 移除对旧的 Partition.group 的 joinedload
         item_obj = session.query(ClipboardItem).options(
             joinedload(ClipboardItem.tags),
-            joinedload(ClipboardItem.partition).joinedload(Partition.group)
+            joinedload(ClipboardItem.partition) # 只加载直接关联的 partition
         ).get(item_id)
         
         if item_obj:
             tags = [t.name for t in item_obj.tags]
-            group_name = item_obj.partition.group.name if item_obj.partition and item_obj.partition.group else None
-            partition_name = item_obj.partition.name if item_obj.partition else None
+            
+            # 新逻辑: 递归获取分区路径
+            path_parts = []
+            current_partition = item_obj.partition
+            while current_partition:
+                path_parts.append(current_partition.name)
+                # 在循环内继续查询父级
+                current_partition = session.query(Partition).get(current_partition.parent_id)
+
+            path_parts.reverse() # 反转得到 "父 -> 子" 的顺序
+            
+            group_name = path_parts[0] if path_parts else None
+            partition_name = " -> ".join(path_parts) if path_parts else None
 
             self.detail_panel.load_item(
                 item_obj.content, item_obj.note, tags,

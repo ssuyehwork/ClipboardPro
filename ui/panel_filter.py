@@ -15,16 +15,17 @@ class FilterPanel(QWidget):
         # 移除所有内联样式，由全局主题控制
         
         self.layout = QVBoxLayout(self)
-        self.layout.setContentsMargins(8, 8, 8, 8)
+        self.layout.setContentsMargins(0, 0, 0, 0) # 保持 0 边距以支持高亮全宽
         self.layout.setSpacing(0)
         
         self.tree = QTreeWidget()
         self.tree.setHeaderHidden(True)
-        self.tree.setIndentation(6) # 进一步减小缩进
+        self.tree.setIndentation(20) # 始终保持 20px 缩进以确保层级清晰
         self.tree.setFocusPolicy(Qt.NoFocus)
-        self.tree.setRootIsDecorated(True) # 显示折叠/展开箭头
+        self.tree.setRootIsDecorated(True) # 显式恢复层级箭头显示
         self.tree.setUniformRowHeights(True)
         self.tree.setAnimated(True)
+        self.tree.setAllColumnsShowFocus(True) # 核心：让选中高亮横向铺满
         
         self.tree.itemChanged.connect(self._on_item_changed)
         self.tree.itemClicked.connect(self._on_item_clicked)

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
-from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QTextEdit, QFrame, 
-                             QSizePolicy, QScrollArea, QPushButton, QGraphicsOpacityEffect)
+from PyQt5.QtWidgets import (QDialog, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTextEdit, QFrame, 
+                             QSizePolicy, QScrollArea, QPushButton, QGraphicsOpacityEffect, QGraphicsDropShadowEffect)
 from PyQt5.QtCore import Qt, QPoint, QTimer, QSize
 from PyQt5.QtGui import QPixmap, QCursor, QTransform, QColor
 
@@ -18,13 +18,33 @@ class PreviewDialog(QDialog):
         self.is_dragging = False
         self.last_mouse_pos = QPoint()
         self.mode = 'image'
+
+        # 初始化窗口拖动所需的变量
+        self.is_window_dragging = False
+        self.drag_start_position = QPoint()
         
         self.layout = QVBoxLayout(self)
-        self.layout.setContentsMargins(0, 0, 0, 0)
+        self.layout.setContentsMargins(30, 30, 30, 30)
         self.layout.setSpacing(0)
         
         self.container = QFrame()
         self.container.setObjectName("PreviewContainer")
+        self.container.setStyleSheet("""
+            #PreviewContainer {
+                background-color: #2b2b2b;
+                border: 1px solid #454545;
+                border-radius: 8px;
+            }
+        """)
+        
+        # Window Shadow
+        window_shadow = QGraphicsDropShadowEffect(self)
+        window_shadow.setBlurRadius(50)
+        window_shadow.setXOffset(0)
+        window_shadow.setYOffset(0)
+        window_shadow.setColor(QColor(0, 0, 0, 180))
+        self.container.setGraphicsEffect(window_shadow)
+        
         self.layout.addWidget(self.container)
         
         self.inner_layout = QVBoxLayout(self.container)
@@ -33,7 +53,7 @@ class PreviewDialog(QDialog):
         
         self.top_bar = QFrame() 
         self.top_layout = QHBoxLayout(self.top_bar)
-        self.top_layout.setContentsMargins(15, 10, 15, 5)
+        self.top_layout.setContentsMargins(15, 5, 15, 5)
         
         self.lbl_info = QLabel("")
         self.lbl_info.setObjectName("PreviewInfoLabel")
@@ -44,7 +64,7 @@ class PreviewDialog(QDialog):
         btn_close.setFixedSize(30, 30)
         btn_close.setCursor(Qt.PointingHandCursor)
         btn_close.clicked.connect(self.close)
-        btn_close.setObjectName("PreviewCloseButton")
+        btn_close.setObjectName("PreviewDialogCloseButton")
         self.top_layout.addWidget(btn_close)
         
         self.inner_layout.addWidget(self.top_bar)
@@ -60,11 +80,26 @@ class PreviewDialog(QDialog):
         self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         
+        # 图片预览容器 (为了容纳阴影，不被 ScrollArea 截断)
+        self.image_container = QWidget()
+        self.image_container_layout = QVBoxLayout(self.image_container)
+        self.image_container_layout.setContentsMargins(40, 40, 40, 40) # 宽大的阴影呼吸空间
+        self.image_container_layout.setAlignment(Qt.AlignCenter)
+        
         self.image_label = QLabel()
         self.image_label.setAlignment(Qt.AlignCenter)
-        self.image_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.image_label.setMouseTracking(True)
-        self.scroll_area.setWidget(self.image_label)
+        self.image_label.setObjectName("PreviewImage")
+        
+        # 注入强物理阴影
+        shadow = QGraphicsDropShadowEffect(self)
+        shadow.setBlurRadius(30)
+        shadow.setXOffset(0)
+        shadow.setYOffset(10)
+        shadow.setColor(QColor(0, 0, 0, 200))
+        self.image_label.setGraphicsEffect(shadow)
+        
+        self.image_container_layout.addWidget(self.image_label)
+        self.scroll_area.setWidget(self.image_container)
         
         self.content_layout.addWidget(self.scroll_area)
         
@@ -112,12 +147,14 @@ class PreviewDialog(QDialog):
         
         self.text_preview.installEventFilter(self)
         self.image_label.installEventFilter(self)
+        self.image_container.installEventFilter(self)
         self.scroll_area.installEventFilter(self)
 
     def _create_control_button(self, text, tooltip):
         btn = QPushButton(text)
         btn.setToolTip(tooltip)
         btn.setObjectName("PreviewControlButton")
+        btn.setFocusPolicy(Qt.NoFocus)
         return btn
 
     def eventFilter(self, source, event):
@@ -138,7 +175,7 @@ class PreviewDialog(QDialog):
             if event.key() == Qt.Key_L:
                 self.rotate(-90); return True
 
-        if source == self.image_label and self.mode == 'image':
+        if source in [self.image_label, self.image_container] and self.mode == 'image':
             if event.type() == event.MouseButtonPress and event.button() == Qt.LeftButton:
                 self.is_dragging = True
                 self.last_mouse_pos = event.globalPos()
@@ -186,6 +223,7 @@ class PreviewDialog(QDialog):
                 self.controls.show()
                 self.fit_to_window(fast_mode=True) 
                 self.update_info_label()
+                self.scroll_area.setFocus()
                 return
 
         self.mode = 'text'
@@ -199,6 +237,7 @@ class PreviewDialog(QDialog):
 
     def clear_state(self):
         self.image_label.clear()
+        self.image_container.adjustSize()
         self.text_preview.clear()
         self.scroll_area.hide()
         self.text_preview.hide()
@@ -223,7 +262,8 @@ class PreviewDialog(QDialog):
 
         final = processed_pixmap.scaled(target_w, target_h, Qt.KeepAspectRatio, mode)
         self.image_label.setPixmap(final)
-        self.image_label.adjustSize()
+        self.image_label.setFixedSize(final.size()) # 锁定标签尺寸，防止抖动
+        self.image_container.adjustSize() # 驱动容器重新计算阴影边距
         
         self.update_cursor()
         self.update_info_label(processed_pixmap.width(), processed_pixmap.height())
@@ -286,3 +326,20 @@ class PreviewDialog(QDialog):
     def closeEvent(self, event):
         self.clear_state()
         super().closeEvent(event)
+
+    # === 窗口拖动逻辑 ===
+    def mousePressEvent(self, event):
+        # 检查是否在标题栏上按下左键
+        if event.button() == Qt.LeftButton and self.top_bar.geometry().contains(event.pos()):
+            self.is_window_dragging = True
+            self.drag_start_position = event.globalPos() - self.frameGeometry().topLeft()
+            event.accept()
+
+    def mouseMoveEvent(self, event):
+        if self.is_window_dragging and event.buttons() == Qt.LeftButton:
+            self.move(event.globalPos() - self.drag_start_position)
+            event.accept()
+
+    def mouseReleaseEvent(self, event):
+        self.is_window_dragging = False
+        event.accept()

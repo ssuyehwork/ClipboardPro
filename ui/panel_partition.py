@@ -23,9 +23,12 @@ class PartitionTreeWidget(QTreeWidget):
         self.setAcceptDrops(True)
         self.setDropIndicatorShown(True)
         self.setDragDropMode(QAbstractItemView.InternalMove)
-        self.setIndentation(15)
+        self.setIndentation(20) # 恢复缩进
         self.setSelectionMode(QAbstractItemView.SingleSelection)
         self.setSortingEnabled(False)
+        self.setFocusPolicy(Qt.NoFocus) # 彻底禁用焦点框显示
+        self.setRootIsDecorated(True) # 恢复装饰线
+        self.setAllColumnsShowFocus(True) # 关键：让高亮横跨全行
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key_Delete:
@@ -162,8 +165,8 @@ class PartitionPanel(QWidget):
         self.refresh_partitions()
 
     def _init_ui(self):
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
+        self.layout = QVBoxLayout(self) # Changed 'layout' to 'self.layout'
+        self.layout.setContentsMargins(0, 0, 0, 0)  # 左右边距设为 0，让高亮条铺满
         
         self.tree = PartitionTreeWidget(self.db, self)
         self.tree.setObjectName("PartitionTree")
@@ -175,8 +178,8 @@ class PartitionPanel(QWidget):
         self.tree.itemSelectionChanged.connect(self._on_selection_changed)
         self.tree.partitionsUpdated.connect(self.partitionsUpdated.emit)
         
-        layout.addWidget(self.tree)
-        self.setLayout(layout)
+        self.layout.addWidget(self.tree)
+        # self.setLayout(self.layout) # QVBoxLayout(self) 已经自动设置了 layout
 
     def _on_item_double_clicked(self, item, column):
         if item.data(0, Qt.UserRole).get('type') == 'partition':
