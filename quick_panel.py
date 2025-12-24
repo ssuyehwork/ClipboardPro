@@ -10,6 +10,9 @@ from PyQt5.QtGui import QImage
 
 from data.database import DBManager
 
+# Windows API Constants
+WM_PASTE = 0x0302
+
 DARK_STYLESHEET = """
 QWidget {
     background-color: #2E2E2E;
@@ -94,17 +97,14 @@ class QuickPanel(QWidget):
         self.last_external_hwnd = None
         self._init_ui()
         
-        # 搜索定时器
         self.search_timer = QTimer(self)
         self.search_timer.setSingleShot(True)
         self.search_timer.timeout.connect(self._update_list)
         
-        # 窗口追踪定时器
         self.focus_timer = QTimer(self)
         self.focus_timer.timeout.connect(self._track_active_window)
         self.focus_timer.start(200)
 
-        # 连接信号
         self.search_box.textChanged.connect(self._on_search_text_changed)
         self.list_widget.itemActivated.connect(self._on_item_activated)
         self.partition_tree.currentItemChanged.connect(self._on_partition_selection_changed)
@@ -115,14 +115,13 @@ class QuickPanel(QWidget):
         self.title_bar.toggle_partition_button.clicked.connect(self._toggle_partition_panel)
         self.title_bar.close_button.clicked.connect(self.close)
 
-        # 初始化
         self._update_partition_tree()
         self._setup_icons()
         self._is_pinned = False
 
     def _init_ui(self):
         self.setWindowTitle("Quick Panel")
-        self.setWindowFlags(Qt.FramelessWindowHint | Qt.Window) # 修改为普通窗口
+        self.setWindowFlags(Qt.FramelessWindowHint | Qt.Window)
         
         self.main_layout = QVBoxLayout(self)
         self.main_layout.setContentsMargins(0, 0, 0, 0)
@@ -158,15 +157,11 @@ class QuickPanel(QWidget):
         self.resize(600, 600)
 
     def _track_active_window(self):
-        """定时追踪当前活动的窗口句柄。"""
         try:
-            # 使用ctypes获取当前前台窗口的句柄
             hwnd = ctypes.windll.user32.GetForegroundWindow()
-            # 如果这个句柄有效，并且不是本窗口自己的句柄，则记录下来
             if hwnd and hwnd != self.winId():
                 self.last_external_hwnd = hwnd
         except AttributeError:
-            # 如果不在Windows环境下，此代码会失败，但程序不会崩溃
             self.last_external_hwnd = None
 
     def _on_search_text_changed(self):
@@ -240,45 +235,29 @@ class QuickPanel(QWidget):
 
     def _on_item_activated(self, item):
         db_item = item.data(Qt.UserRole)
-        if db_item:
-            try:
-                # 1. 复制到剪贴板
-                if db_item.item_type == 'image' and db_item.data_blob:
-                    image = QImage()
-                    image.loadFromData(db_item.data_blob)
-                    QApplication.clipboard().setImage(image)
-                else:
-                    QApplication.clipboard().setText(db_item.content)
+        if not db_item:
+            return
 
-                # 2. 检查是否有上一个窗口句柄
-                if self.last_external_hwnd:
-                    self.hide() # 隐藏自己
-                    try:
-                        # 激活上一个窗口
-                        ctypes.windll.user32.SetForegroundWindow(self.last_external_hwnd)
-                        if ctypes.windll.user32.IsIconic(self.last_external_hwnd):
-                            ctypes.windll.user32.ShowWindow(self.last_external_hwnd, 9)
-                    except Exception as e:
-                        print(f"激活窗口失败: {e}")
-
-                    QTimer.singleShot(100, self._send_ctrl_v)
-                else:
-                    # 如果没有有效句柄，则不执行任何操作（窗口保持可见）
-                    print("没有检测到有效的外部窗口来粘贴")
-
-            except Exception as e:
-                print(f"处理项目激活失败: {e}")
-
-    def _send_ctrl_v(self):
-        """模拟发送 Ctrl+V 键盘事件，但不关闭窗口。"""
         try:
-            ctypes.windll.user32.keybd_event(0x11, 0, 0, 0)
-            ctypes.windll.user32.keybd_event(0x56, 0, 0, 0)
-            ctypes.windll.user32.keybd_event(0x56, 0, 2, 0)
-            ctypes.windll.user32.keybd_event(0x11, 0, 2, 0)
+            # 1. 复制到剪贴板
+            if db_item.item_type == 'image' and db_item.data_blob:
+                image = QImage()
+                image.loadFromData(db_item.data_blob)
+                QApplication.clipboard().setImage(image)
+            else:
+                QApplication.clipboard().setText(db_item.content)
+
+            # 2. 直接向上一个窗口发送粘贴消息，无需隐藏或激活本窗口
+            if self.last_external_hwnd:
+                try:
+                    ctypes.windll.user32.SendMessageW(self.last_external_hwnd, WM_PASTE, 0, 0)
+                except Exception as e:
+                    print(f"发送 WM_PASTE 消息失败: {e}")
+            else:
+                print("没有检测到有效的外部窗口来粘贴")
+
         except Exception as e:
-            print(f"模拟粘贴失败: {e}")
-        # 注意：这里不再调用 self.close()
+            print(f"处理项目激活失败: {e}")
 
     def keyPressEvent(self, event):
         key = event.key()
