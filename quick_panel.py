@@ -259,7 +259,6 @@ class QuickPanel(QWidget):
                     QApplication.clipboard().setImage(image)
                 else:
                     QApplication.clipboard().setText(db_item.content)
-                self.close()
             except Exception as e:
                 print(f"复制到剪贴板失败: {e}")
 
