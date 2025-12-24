@@ -682,20 +682,27 @@ class DBManager:
     # ==============================================================================
 
     def get_partitions_tree(self):
-        """获取所有顶层分区及其所有子孙，以构建树。"""
+        """
+        获取所有分区并以树状结构返回顶层分区。
+        该方法在会话中完全加载整个树，以避免在UI层发生DetachedInstanceError。
+        """
         with self.Session() as session:
             try:
-                # 预加载多个层级以优化性能
-                partitions = (
-                    session.query(Partition)
-                    .filter(Partition.parent_id == None)
-                    .options(
-                        subqueryload(Partition.children).subqueryload(Partition.children)
-                    )
-                    .order_by(Partition.sort_index)
-                    .all()
-                )
-                return partitions
+                # 1. 一次性加载所有分区到会话中
+                all_partitions = session.query(Partition).order_by(Partition.sort_index).all()
+
+                # 2. 强制加载 children 关系
+                # 通过访问每个分区的 children 属性，SQLAlchemy 的懒加载机制会从
+                # session 中已有的对象里填充这个集合，而不会产生新的数据库查询。
+                # 这一步是解决问题的关键，因为它确保了在 session关闭前，关系被完全建立。
+                for p in all_partitions:
+                    # `len()` 是一个访问集合的简单无害方法
+                    len(p.children)
+
+                # 3. 筛选出顶层分区（没有父级的分区）并返回
+                top_level_partitions = [p for p in all_partitions if p.parent_id is None]
+
+                return top_level_partitions
             except Exception as e:
                 log.error(f"获取分区树失败: {e}", exc_info=True)
                 return []
