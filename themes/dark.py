@@ -19,8 +19,8 @@ STYLESHEET = """
     
     #MainFrame {
         background-color: #3c3c3c; /* 统一主框架背景 */
-        border: 1px solid #202020;
-        border-radius: 4px;
+    /* border: 1px solid #202020; */
+    /* border-radius: 4px; */
     }
 
     QDockWidget {
