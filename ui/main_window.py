@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 import logging
 import ctypes
 import os
@@ -8,8 +8,8 @@ from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                              QDockWidget, QLabel, QPushButton, QFrame, 
                              QApplication, QShortcut, QSizeGrip, QMessageBox,
                              QAbstractItemView, QTableWidgetItem, QHeaderView, QMenu)
-from PyQt5.QtCore import Qt, QPoint, QTimer, QSettings
-from PyQt5.QtGui import QColor, QKeySequence
+from PyQt5.QtCore import Qt, QPoint, QTimer, QSettings, QRect
+from PyQt5.QtGui import QColor, QKeySequence, QImage
 from sqlalchemy.orm import joinedload
 
 # 核心逻辑
@@ -50,15 +50,26 @@ class MainWindow(QMainWindow):
         super().__init__()
         log.info("🚀 初始化 MainWindow...")
         self.setWindowTitle("印象记忆_Pro")
-        # 增加初始窗口宽度，确保有足够空间水平排列Dock面板
-        self.resize(1400, 800)
         
-        # 1. 无边框设置
+        # 1. 智能初始化尺寸 (解决窗口过高问题)
+        screen_geo = QApplication.desktop().availableGeometry()
+        screen_w, screen_h = screen_geo.width(), screen_geo.height()
+        
+        # 默认宽1200，高700，但不能超过屏幕的 90%
+        init_w = min(1200, int(screen_w * 0.9))
+        init_h = min(700, int(screen_h * 0.9))
+        self.resize(init_w, init_h)
+        
+        # 将窗口居中
+        self.move((screen_w - init_w) // 2, (screen_h - init_h) // 2)
+        
+        # 2. 无边框设置
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowSystemMenuHint | Qt.WindowMinimizeButtonHint | Qt.WindowMaximizeButtonHint)
         self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setMouseTracking(True) # 开启鼠标追踪，辅助光标判定
         
-        # 边缘判定范围 (加大到10px确保能点到)
-        self.border_width = 10
+        # 3. 边缘判定范围 (加大到 8px 确保能轻松点到)
+        self.border_width = 8
         
         # 变量
         self.edit_mode = False
@@ -99,11 +110,14 @@ class MainWindow(QMainWindow):
         log.info("✅ 主窗口启动完毕")
 
     def setup_ui(self):
-        # 1. 物理边缘 - 修改为5像素
+        # 1. 物理边缘
+        # 这里设置为 0 或很小，配合 nativeEvent 的 border_width 使用
+        # 稍微留一点 margin 可以让阴影或边框显示出来，但如果太大容易导致鼠标穿透
         self.central_widget = QWidget()
         self.setCentralWidget(self.central_widget)
         self.outer_layout = QVBoxLayout(self.central_widget)
-        self.outer_layout.setContentsMargins(5, 5, 5, 5)  # 修改为5px
+        # 设置与 border_width 一致或略小的 margin
+        self.outer_layout.setContentsMargins(5, 5, 5, 5) 
         self.outer_layout.setSpacing(0)
         
         # 2. 视觉容器 - 添加圆角
@@ -350,7 +364,7 @@ class MainWindow(QMainWindow):
                 if not self.preview_dlg:
                     self.preview_dlg = PreviewDialog(self)
                 
-                self.preview_dlg.load_data(item.content, item.item_type, item.file_path, item.image_path)
+                self.preview_dlg.load_data(item.content, item.item_type, item.file_path, item.image_path, item.data_blob)
                 self.preview_dlg.show()
                 self.preview_dlg.raise_()
                 self.preview_dlg.activateWindow()
@@ -367,24 +381,28 @@ class MainWindow(QMainWindow):
         return super().eventFilter(source, event)
 
     def nativeEvent(self, eventType, message):
+        """处理 Windows 原生消息，实现无边框窗口的拖动缩放"""
         if eventType == "windows_generic_MSG":
             msg = MSG.from_address(message.__int__())
             if msg.message == 0x0084: # WM_NCHITTEST
-                # 强制转换为有符号整数，解决双屏/负坐标问题
+                # 获取鼠标位置 (处理负坐标和多屏)
                 x = ctypes.c_short(msg.lParam & 0xFFFF).value
                 y = ctypes.c_short((msg.lParam >> 16) & 0xFFFF).value
+                # 将全局坐标映射到窗口坐标系
                 pos = self.mapFromGlobal(QPoint(x, y))
                 
                 w = self.width()
                 h = self.height()
-                m = 5  # 边缘宽度改为5像素
+                m = self.border_width  # 使用增加后的边缘判定宽度
                 
+                # 判定鼠标是否在边缘区域
                 is_left = pos.x() < m
                 is_right = pos.x() > w - m
                 is_top = pos.y() < m
                 is_bottom = pos.y() > h - m
                 
-                # 判定优先级：角落 > 边缘 > 标题栏
+                # 优先级：角落 > 边缘 > 标题栏 > 客户区
+                # 返回 Windows 定义的 HT 代码
                 if is_top and is_left: return True, 13  # HTTOPLEFT
                 if is_top and is_right: return True, 14  # HTTOPRIGHT
                 if is_bottom and is_left: return True, 16  # HTBOTTOMLEFT
@@ -394,12 +412,14 @@ class MainWindow(QMainWindow):
                 if is_top: return True, 12  # HTTOP
                 if is_bottom: return True, 15  # HTBOTTOM
                 
-                # 标题栏
-                title_pos = self.title_bar.mapFromGlobal(QPoint(x, y))
-                if self.title_bar.rect().contains(title_pos):
-                    # 避免在按钮上拖拽
-                    if not self.title_bar.childAt(title_pos):
-                        return True, 2  # HTCAPTION
+                # 标题栏拖动区域判定
+                # 将鼠标位置转换到标题栏坐标系
+                if self.title_bar:
+                    title_pos = self.title_bar.mapFromGlobal(QPoint(x, y))
+                    if self.title_bar.rect().contains(title_pos):
+                        # 如果鼠标在按钮上，则不作为标题栏处理（让按钮接收事件）
+                        if not self.title_bar.childAt(title_pos):
+                            return True, 2  # HTCAPTION
                         
         return super().nativeEvent(eventType, message)
 
@@ -442,9 +462,9 @@ class MainWindow(QMainWindow):
         
     def focus_search_shortcut(self):
         """Ctrl+F: 定位搜索框"""
-        if hasattr(self, 'title_bar') and hasattr(self.title_bar, 'search_input'):
-            self.title_bar.search_input.setFocus()
-            self.title_bar.search_input.selectAll()
+        if hasattr(self, 'title_bar') and hasattr(self.title_bar, 'search_bar'):
+            self.title_bar.search_bar.setFocus()
+            self.title_bar.search_bar.selectAll()
 
     def _batch_action(self, name, action_func):
         """通用批量操作辅助函数"""
@@ -571,8 +591,23 @@ class MainWindow(QMainWindow):
     def restore_window_state(self):
         log.info("💾 恢复窗口状态...")
         s = QSettings("ClipboardPro", "WindowState_v7")  # 使用v7
+        
         if g := s.value("geometry"): 
             self.restoreGeometry(g)
+            
+        # 安全检查：如果恢复后的几何位置超出屏幕，则重置为安全大小
+        # 这解决了“窗口太高超出屏幕”且无法缩小的问题
+        screen_geo = QApplication.desktop().availableGeometry()
+        curr_geo = self.geometry()
+        
+        # 如果高度超过屏幕高度，或者顶部/左侧超出可视范围
+        if curr_geo.height() > screen_geo.height() or curr_geo.top() < 0 or curr_geo.left() < 0:
+             log.warning("⚠️ 检测到窗口尺寸异常，正在重置为安全尺寸...")
+             init_w = min(1200, int(screen_geo.width() * 0.9))
+             init_h = min(700, int(screen_geo.height() * 0.9))
+             self.resize(init_w, init_h)
+             self.move((screen_geo.width() - init_w) // 2, (screen_geo.height() - init_h) // 2)
+
         if ws := s.value("windowState"):
             self.dock_container.restoreState(ws)
         else:
@@ -1005,12 +1040,17 @@ class MainWindow(QMainWindow):
             from data.database import ClipboardItem
             obj = session.query(ClipboardItem).get(self.current_item_id)
             if obj:
-                # 使用标志位防止触发剪贴板事件
                 self._processing_clipboard = True
                 try:
-                    self.clipboard.setText(obj.content)
+                    if obj.item_type == 'image' and obj.data_blob:
+                        image = QImage()
+                        image.loadFromData(obj.data_blob)
+                        self.clipboard.setImage(image)
+                    else:
+                        self.clipboard.setText(obj.content)
                 finally:
                     self._processing_clipboard = False
+                
                 if self.last_external_hwnd:
                     self.showMinimized()
                     try:
@@ -1076,7 +1116,8 @@ class MainWindow(QMainWindow):
                 partition_name=partition_name,
                 item_type=item_obj.item_type,
                 image_path=item_obj.image_path,
-                file_path=item_obj.file_path
+                file_path=item_obj.file_path,
+                image_blob=item_obj.data_blob
             )
             self.current_item_id = item_id
         session.close()

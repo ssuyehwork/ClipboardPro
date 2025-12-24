@@ -118,7 +118,7 @@ class DetailPanel(QWidget):
         self.layout.addStretch(1)
         self.layout.addWidget(self.tag_input)
 
-    def load_item(self, content, note, tags, group_name=None, partition_name=None, item_type='text', image_path=None, file_path=None):
+    def load_item(self, content, note, tags, group_name=None, partition_name=None, item_type='text', image_path=None, file_path=None, image_blob=None):
         # 设置分区信息
         self.lbl_group.setText(f"分组: {group_name or '--'}")
         self.lbl_partition.setText(f"分区: {partition_name or '未分类'}")
@@ -127,29 +127,25 @@ class DetailPanel(QWidget):
         self.note_edit.setText(note)
         self.note_edit.setCursorPosition(0)
         
-        # 处理图片/文本切换逻辑
-        final_image_path = None
-        if image_path and os.path.exists(image_path):
-            final_image_path = image_path
-        elif file_path and os.path.exists(file_path):
-            ext = os.path.splitext(file_path)[1].lower()
-            if ext in ['.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp']:
-                final_image_path = file_path
-        
-        if final_image_path:
+        pixmap = QPixmap()
+        can_show_image = False
+
+        if item_type == 'image':
+            if image_blob:
+                can_show_image = pixmap.loadFromData(image_blob)
+            else: # 兼容旧数据
+                path_to_try = image_path or file_path
+                if path_to_try and os.path.exists(path_to_try):
+                    can_show_image = pixmap.load(path_to_try)
+
+        if can_show_image:
             self.preview.hide()
             self.image_container.show()
             self.image_label.show()
-            pixmap = QPixmap(final_image_path)
-            if not pixmap.isNull():
-                # 计算缩放后的实际尺寸，确保文字不被挤压，阴影紧贴图片
-                max_w = self.width() - 40 # 减去边距和阴影空间
-                scaled_pixmap = pixmap.scaled(max_w, max_w, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-                self.image_label.setPixmap(scaled_pixmap)
-                # 关键：清除固定高度，让 Label 自动包裹 Pixmap
-                self.image_label.setFixedSize(scaled_pixmap.size())
-            else:
-                self.image_label.setText("图片无法加载")
+            max_w = self.width() - 40
+            scaled_pixmap = pixmap.scaled(max_w, max_w, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            self.image_label.setPixmap(scaled_pixmap)
+            self.image_label.setFixedSize(scaled_pixmap.size())
         else:
             self.image_container.hide()
             self.image_label.hide()

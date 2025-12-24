@@ -4,7 +4,7 @@ import os
 import hashlib
 import logging
 from datetime import datetime, timedelta, time
-from sqlalchemy import create_engine, Column, Integer, String, Text, Boolean, DateTime, ForeignKey, Table, Index, Float, func, or_, exists, and_
+from sqlalchemy import create_engine, Column, Integer, String, Text, Boolean, DateTime, ForeignKey, Table, Index, Float, func, or_, exists, and_, BLOB
 from sqlalchemy.orm import declarative_base, relationship, sessionmaker, joinedload, subqueryload
 
 log = logging.getLogger("Database")
@@ -68,11 +68,15 @@ class ClipboardItem(Base):
     
     # 新增字段：支持图片和URL
     item_type = Column(String(20), default='text')  # 'text', 'file', 'image', 'url'
-    image_path = Column(Text, default=None)         # 图片本地路径
-    thumbnail_path = Column(Text, default=None)     # 缩略图路径
+    image_path = Column(Text, default=None)         # 图片本地路径（保留，用于兼容旧数据）
+    thumbnail_path = Column(Text, default=None)     # 缩略图路径（保留，用于兼容旧数据）
     url = Column(Text, default=None)                # URL地址
     url_title = Column(String(200), default=None)   # URL标题
     url_domain = Column(String(100), default=None)  # URL域名
+    
+    # 新增二进制数据存储
+    data_blob = Column(BLOB, nullable=True)         # 储存图片、富文本等二进制数据
+    thumbnail_blob = Column(BLOB, nullable=True)    # 储存缩略图的二进制数据
     
     partition_id = Column(Integer, ForeignKey('partitions.id'), nullable=True)
     original_partition_id = Column(Integer, nullable=True) # 用于恢复功能
@@ -115,19 +119,18 @@ class DBManager:
             inspector = inspect(self.engine)
             
             with self.engine.connect() as connection:
-                # 步骤 1: 确保所有新列都已添加（特别是 partitions.parent_id）
+                # 步骤 1: 确保所有模型的所有新列都已添加
                 add_col_transaction = connection.begin()
                 try:
-                    # 仅检查 'partitions' 表，因为这是我们关心的
-                    if inspector.has_table('partitions'):
-                        table = Base.metadata.tables['partitions']
-                        existing_cols = {c['name'] for c in inspector.get_columns('partitions')}
+                    for table_name, table in Base.metadata.tables.items():
+                        log.debug(f"检查表 '{table_name}' 的迁移...")
+                        existing_cols = {c['name'] for c in inspector.get_columns(table_name)}
                         for column in table.columns:
                             if column.name not in existing_cols:
                                 col_type = column.type.compile(self.engine.dialect)
-                                stmt = text(f'ALTER TABLE partitions ADD COLUMN {column.name} {col_type}')
+                                stmt = text(f'ALTER TABLE {table_name} ADD COLUMN {column.name} {col_type}')
                                 connection.execute(stmt)
-                                log.info(f"✅ 表 'partitions' 中添加字段: {column.name}")
+                                log.info(f"✅ 表 '{table_name}' 中添加字段: {column.name}")
                     add_col_transaction.commit()
                 except Exception as e:
                     log.error(f"添加新列失败，正在回滚: {e}")
@@ -189,7 +192,7 @@ class DBManager:
 
     def add_item(self, text, is_file=False, file_path=None, item_type='text', 
                  image_path=None, thumbnail_path=None, url=None, url_title=None, 
-                 url_domain=None, partition_id=None):
+                 url_domain=None, partition_id=None, data_blob=None, thumbnail_blob=None):
         """
         添加剪贴板项
         
@@ -204,6 +207,8 @@ class DBManager:
             url_title: URL标题
             url_domain: URL域名
             partition_id: (可选) 关联的分区ID
+            data_blob: (可选) 二进制数据
+            thumbnail_blob: (可选) 缩略图二进制数据
         """
         session = self.get_session()
         try:
@@ -234,7 +239,9 @@ class DBManager:
                 url=url,
                 url_title=url_title,
                 url_domain=url_domain,
-                partition_id=partition_id
+                partition_id=partition_id,
+                data_blob=data_blob,
+                thumbnail_blob=thumbnail_blob
             )
             session.add(new_item)
             try:
