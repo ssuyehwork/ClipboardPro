@@ -103,12 +103,13 @@ class MainWindow(QMainWindow):
         self.central_widget = QWidget()
         self.setCentralWidget(self.central_widget)
         self.outer_layout = QVBoxLayout(self.central_widget)
-        self.outer_layout.setContentsMargins(5, 5, 5, 5)  # 修改为5px
+        self.outer_layout.setContentsMargins(8, 8, 8, 8)
         self.outer_layout.setSpacing(0)
         
         # 2. 视觉容器 - 添加圆角
         self.big_container = QFrame()
         self.big_container.setObjectName("MainFrame")
+        self.big_container.setAttribute(Qt.WA_TransparentForMouseEvents, True)
         self.outer_layout.addWidget(self.big_container)
         self.inner_layout = QVBoxLayout(self.big_container)
         self.inner_layout.setContentsMargins(0, 0, 0, 0)
@@ -375,15 +376,20 @@ class MainWindow(QMainWindow):
                 y = ctypes.c_short((msg.lParam >> 16) & 0xFFFF).value
                 pos = self.mapFromGlobal(QPoint(x, y))
                 
-                w = self.width()
-                h = self.height()
-                m = 5  # 边缘宽度改为5像素
+                rect = self.frameGeometry()
+                w = rect.width()
+                h = rect.height()
+                m = 8
                 
                 is_left = pos.x() < m
                 is_right = pos.x() > w - m
                 is_top = pos.y() < m
                 is_bottom = pos.y() > h - m
                 
+                if is_left or is_right or is_top or is_bottom:
+                    log.debug(f"边缘检测触发: pos={pos}, w={w}, h={h}, m={m}")
+                    log.debug(f"is_left={is_left}, is_right={is_right}, is_top={is_top}, is_bottom={is_bottom}")
+
                 # 判定优先级：角落 > 边缘 > 标题栏
                 if is_top and is_left: return True, 13  # HTTOPLEFT
                 if is_top and is_right: return True, 14  # HTTOPRIGHT
