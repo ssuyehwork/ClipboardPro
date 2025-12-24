@@ -2,6 +2,9 @@
 import sys
 import os
 import ctypes
+import time
+from ctypes import wintypes
+
 from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QListWidget, QLineEdit, 
                              QListWidgetItem, QHBoxLayout, QTreeWidget, QTreeWidgetItem, 
                              QPushButton, QStyle, QSpacerItem, QSizePolicy, QAction)
@@ -10,55 +13,50 @@ from PyQt5.QtGui import QImage
 
 from data.database import DBManager
 
-# Windows API Constants
-WM_PASTE = 0x0302
+# --- Win32 API Definitions for Ditto Mode ---
+
+# For GetGUIThreadInfo
+class GUITHREADINFO(ctypes.Structure):
+    _fields_ = [
+        ("cbSize", wintypes.DWORD),
+        ("flags", wintypes.DWORD),
+        ("hwndActive", wintypes.HWND),
+        ("hwndFocus", wintypes.HWND),
+        ("hwndCapture", wintypes.HWND),
+        ("hwndMenuOwner", wintypes.HWND),
+        ("hwndMoveSize", wintypes.HWND),
+        ("hwndCaret", wintypes.HWND),
+        ("rcCaret", wintypes.RECT),
+    ]
+
+# For SendInput
+PUL = ctypes.POINTER(ctypes.c_ulong)
+class KeyBdInput(ctypes.Structure):
+    _fields_ = [("wVk", ctypes.c_ushort), ("wScan", ctypes.c_ushort), ("dwFlags", ctypes.c_ulong), ("time", ctypes.c_ulong), ("dwExtraInfo", PUL)]
+class HardwareInput(ctypes.Structure):
+    _fields_ = [("uMsg", ctypes.c_ulong), ("wParamL", ctypes.c_ushort), ("wParamH", ctypes.c_ushort)]
+class MouseInput(ctypes.Structure):
+    _fields_ = [("dx", ctypes.c_long), ("dy", ctypes.c_long), ("mouseData", ctypes.c_ulong), ("dwFlags", ctypes.c_ulong), ("time", ctypes.c_ulong), ("dwExtraInfo", PUL)]
+class Input_I(ctypes.Union):
+    _fields_ = [("ki", KeyBdInput), ("mi", MouseInput), ("hi", HardwareInput)]
+class Input(ctypes.Structure):
+    _fields_ = [("type", ctypes.c_ulong), ("ii", Input_I)]
+
+# Constants
+KEYEVENTF_KEYUP = 0x0002
+VK_CONTROL = 0x11
+VK_V = 0x56
 
 DARK_STYLESHEET = """
-QWidget {
-    background-color: #2E2E2E;
-    color: #F0F0F0;
-    font-family: "Microsoft YaHei";
-    font-size: 14px;
-}
-QListWidget, QTreeWidget {
-    border: 1px solid #444;
-    border-radius: 4px;
-    padding: 5px;
-}
-QListWidget::item {
-    padding: 8px;
-}
-QTreeWidget::item {
-    padding-top: 2px;
-    padding-bottom: 2px;
-    padding-left: 6px;
-}
-QListWidget::item:selected, QTreeWidget::item:selected {
-    background-color: #4D4D4D;
-    color: #FFFFFF;
-}
-QLineEdit {
-    background-color: #3C3C3C;
-    border: 1px solid #555;
-    border-radius: 4px;
-    padding: 6px;
-    font-size: 16px;
-}
-CustomTitleBar {
-    background-color: #3C3C3C;
-    height: 30px;
-}
-CustomTitleBar QPushButton {
-    background-color: transparent;
-    border: none;
-    width: 25px;
-    height: 25px;
-    padding: 5px;
-}
-CustomTitleBar QPushButton:hover {
-    background-color: #555555;
-    border-radius: 4px;
-}
+QWidget { background-color: #2E2E2E; color: #F0F0F0; font-family: "Microsoft YaHei"; font-size: 14px; }
+QListWidget, QTreeWidget { border: 1px solid #444; border-radius: 4px; padding: 5px; }
+QListWidget::item { padding: 8px; }
+QTreeWidget::item { padding-top: 2px; padding-bottom: 2px; padding-left: 6px; }
+QListWidget::item:selected, QTreeWidget::item:selected { background-color: #4D4D4D; color: #FFFFFF; }
+QLineEdit { background-color: #3C3C3C; border: 1px solid #555; border-radius: 4px; padding: 6px; font-size: 16px; }
+CustomTitleBar { background-color: #3C3C3C; height: 30px; }
+CustomTitleBar QPushButton { background-color: transparent; border: none; width: 25px; height: 25px; padding: 5px; }
+CustomTitleBar QPushButton:hover { background-color: #555555; border-radius: 4px; }
 """
 
 class CustomTitleBar(QWidget):
@@ -94,17 +92,19 @@ class QuickPanel(QWidget):
         if not db_manager:
             raise ValueError("DBManager instance is required.")
         self.db = db_manager
-        self.last_external_hwnd = None
+        self.last_active_hwnd = None
+        self.last_focus_hwnd = None
+        self.last_thread_id = None
         self._init_ui()
         
+        self.monitor_timer = QTimer(self)
+        self.monitor_timer.timeout.connect(self._track_active_window)
+        self.monitor_timer.start(200)
+
         self.search_timer = QTimer(self)
         self.search_timer.setSingleShot(True)
         self.search_timer.timeout.connect(self._update_list)
         
-        self.focus_timer = QTimer(self)
-        self.focus_timer.timeout.connect(self._track_active_window)
-        self.focus_timer.start(200)
-
         self.search_box.textChanged.connect(self._on_search_text_changed)
         self.list_widget.itemActivated.connect(self._on_item_activated)
         self.partition_tree.currentItemChanged.connect(self._on_partition_selection_changed)
@@ -121,7 +121,7 @@ class QuickPanel(QWidget):
 
     def _init_ui(self):
         self.setWindowTitle("Quick Panel")
-        self.setWindowFlags(Qt.FramelessWindowHint | Qt.Window)
+        self.setWindowFlags(Qt.FramelessWindowHint | Qt.Window | Qt.Tool)
         
         self.main_layout = QVBoxLayout(self)
         self.main_layout.setContentsMargins(0, 0, 0, 0)
@@ -160,9 +160,18 @@ class QuickPanel(QWidget):
         try:
             hwnd = ctypes.windll.user32.GetForegroundWindow()
             if hwnd and hwnd != self.winId():
-                self.last_external_hwnd = hwnd
+                self.last_active_hwnd = hwnd
+
+                thread_id = ctypes.windll.user32.GetWindowThreadProcessId(hwnd, None)
+                gui_thread_info = GUITHREADINFO(cbSize=ctypes.sizeof(GUITHREADINFO))
+
+                if ctypes.windll.user32.GetGUIThreadInfo(thread_id, ctypes.byref(gui_thread_info)):
+                    self.last_focus_hwnd = gui_thread_info.hwndFocus
+                    self.last_thread_id = thread_id
+                else:
+                    self.last_focus_hwnd = self.last_active_hwnd
         except AttributeError:
-            self.last_external_hwnd = None
+            pass
 
     def _on_search_text_changed(self):
         self.search_timer.start(300)
@@ -187,14 +196,10 @@ class QuickPanel(QWidget):
             self.list_widget.setCurrentRow(0)
 
     def _get_content_display(self, item):
-        if item.item_type == 'file' and item.file_path:
-            return os.path.basename(item.file_path)
-        elif item.item_type == 'url' and item.url_domain:
-            return f"[{item.url_domain}] {item.url_title or ''}"
-        elif item.item_type == 'image':
-            return "[图片] " + os.path.basename(item.image_path) if item.image_path else "[图片]"
-        else:
-            return item.content.replace('\n', ' ').replace('\r', '').strip()[:150]
+        if item.item_type == 'file' and item.file_path: return os.path.basename(item.file_path)
+        elif item.item_type == 'url' and item.url_domain: return f"[{item.url_domain}] {item.url_title or ''}"
+        elif item.item_type == 'image': return "[图片] " + os.path.basename(item.image_path) if item.image_path else "[图片]"
+        else: return item.content.replace('\n', ' ').replace('\r', '').strip()[:150]
 
     def _update_partition_tree(self):
         self.partition_tree.clear()
@@ -209,23 +214,15 @@ class QuickPanel(QWidget):
         for partition in partitions:
             item = QTreeWidgetItem(parent_item, [partition.name])
             item.setData(0, Qt.UserRole, {'type': 'partition', 'id': partition.id})
-            if partition.children:
-                self._add_partition_recursive(partition.children, item)
+            if partition.children: self._add_partition_recursive(partition.children, item)
     
-    def _on_partition_selection_changed(self, current, previous):
-        self._update_list()
-
-    def _toggle_partition_panel(self):
-        self.partition_tree.setVisible(not self.partition_tree.isVisible())
+    def _on_partition_selection_changed(self, current, previous): self._update_list()
+    def _toggle_partition_panel(self): self.partition_tree.setVisible(not self.partition_tree.isVisible())
 
     def _toggle_stay_on_top(self):
         self._is_pinned = not self._is_pinned
-        if self._is_pinned:
-            self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
-            self.title_bar.pin_button.setIcon(self.style().standardIcon(QStyle.SP_DialogYesButton))
-        else:
-            self.setWindowFlags(self.windowFlags() & ~Qt.WindowStaysOnTopHint)
-            self.title_bar.pin_button.setIcon(self.style().standardIcon(QStyle.SP_DialogNoButton))
+        if self._is_pinned: self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
+        else: self.setWindowFlags(self.windowFlags() & ~Qt.WindowStaysOnTopHint)
         self.show()
 
     def _setup_icons(self):
@@ -233,13 +230,39 @@ class QuickPanel(QWidget):
         self.title_bar.toggle_partition_button.setIcon(self.style().standardIcon(QStyle.SP_FileDialogDetailedView))
         self.title_bar.close_button.setIcon(self.style().standardIcon(QStyle.SP_TitleBarCloseButton))
 
+    def _send_paste_command(self):
+        current_thread_id = ctypes.windll.kernel32.GetCurrentThreadId()
+        attached = False
+        try:
+            # 权限挂接
+            attached = ctypes.windll.user32.AttachThreadInput(current_thread_id, self.last_thread_id, True)
+            if not attached:
+                print("AttachThreadInput 失败")
+                return
+
+            # 激活与聚焦
+            ctypes.windll.user32.SetForegroundWindow(self.last_active_hwnd)
+            ctypes.windll.user32.SetFocus(self.last_focus_hwnd)
+
+            # 模拟粘贴
+            ctrl_down = Input(type=1, ii=Input_I(ki=KeyBdInput(wVk=VK_CONTROL, wScan=0, dwFlags=0, time=0, dwExtraInfo=None)))
+            v_down = Input(type=1, ii=Input_I(ki=KeyBdInput(wVk=VK_V, wScan=0, dwFlags=0, time=0, dwExtraInfo=None)))
+            v_up = Input(type=1, ii=Input_I(ki=KeyBdInput(wVk=VK_V, wScan=0, dwFlags=KEYEVENTF_KEYUP, time=0, dwExtraInfo=None)))
+            ctrl_up = Input(type=1, ii=Input_I(ki=KeyBdInput(wVk=VK_CONTROL, wScan=0, dwFlags=KEYEVENTF_KEYUP, time=0, dwExtraInfo=None)))
+            inputs = (Input * 4)(ctrl_down, v_down, v_up, ctrl_up)
+            ctypes.windll.user32.SendInput(4, ctypes.pointer(inputs), ctypes.sizeof(inputs[0]))
+
+        finally:
+            # 脱离挂接
+            if attached:
+                ctypes.windll.user32.AttachThreadInput(current_thread_id, self.last_thread_id, False)
+
     def _on_item_activated(self, item):
         db_item = item.data(Qt.UserRole)
-        if not db_item:
+        if not db_item or not self.last_active_hwnd:
             return
 
         try:
-            # 1. 复制到剪贴板
             if db_item.item_type == 'image' and db_item.data_blob:
                 image = QImage()
                 image.loadFromData(db_item.data_blob)
@@ -247,22 +270,17 @@ class QuickPanel(QWidget):
             else:
                 QApplication.clipboard().setText(db_item.content)
 
-            # 2. 直接向上一个窗口发送粘贴消息，无需隐藏或激活本窗口
-            if self.last_external_hwnd:
-                try:
-                    ctypes.windll.user32.SendMessageW(self.last_external_hwnd, WM_PASTE, 0, 0)
-                except Exception as e:
-                    print(f"发送 WM_PASTE 消息失败: {e}")
-            else:
-                print("没有检测到有效的外部窗口来粘贴")
+            self.hide() # 必须先隐藏自己，否则自己会成为前景窗口
+            QTimer.singleShot(50, self._send_paste_command)
+            # 粘贴动作完成后，重新显示窗口
+            QTimer.singleShot(100, self.show)
 
         except Exception as e:
             print(f"处理项目激活失败: {e}")
 
     def keyPressEvent(self, event):
         key = event.key()
-        if key == Qt.Key_Escape:
-            self.close()
+        if key == Qt.Key_Escape: self.close()
         elif key in (Qt.Key_Up, Qt.Key_Down):
             self.list_widget.setFocus()
             QApplication.sendEvent(self.list_widget, event)
@@ -273,7 +291,6 @@ class QuickPanel(QWidget):
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     db_manager = DBManager()
-
     panel = QuickPanel(db_manager=db_manager) 
     panel.show()
     screen_geo = app.desktop().screenGeometry()
