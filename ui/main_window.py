@@ -102,18 +102,10 @@ class MainWindow(QMainWindow):
         # 1. 物理边缘 - 修改为5像素
         self.central_widget = QWidget()
         self.setCentralWidget(self.central_widget)
+        self.central_widget.setObjectName("MainFrame")
         self.outer_layout = QVBoxLayout(self.central_widget)
         self.outer_layout.setContentsMargins(8, 8, 8, 8)
         self.outer_layout.setSpacing(0)
-        
-        # 2. 视觉容器 - 添加圆角
-        self.big_container = QFrame()
-        self.big_container.setObjectName("MainFrame")
-        self.big_container.setAttribute(Qt.WA_TransparentForMouseEvents, True)
-        self.outer_layout.addWidget(self.big_container)
-        self.inner_layout = QVBoxLayout(self.big_container)
-        self.inner_layout.setContentsMargins(0, 0, 0, 0)
-        self.inner_layout.setSpacing(0)
         
         # 3. 标题栏
         self.title_bar = CustomTitleBar(self)
@@ -126,7 +118,7 @@ class MainWindow(QMainWindow):
         self.title_bar.clean_clicked.connect(self.auto_clean)
         self.title_bar.mode_clicked.connect(self.toggle_edit_mode)
         self.title_bar.color_clicked.connect(self.toolbar_set_color)  # 连接颜色按钮
-        self.inner_layout.addWidget(self.title_bar)
+        self.outer_layout.addWidget(self.title_bar)
         
         # 4. Dock 容器
         self.dock_container = QMainWindow()
@@ -148,7 +140,7 @@ class MainWindow(QMainWindow):
         self.dock_container.setCorner(Qt.TopRightCorner, Qt.RightDockWidgetArea)
         self.dock_container.setCorner(Qt.BottomRightCorner, Qt.RightDockWidgetArea)
         
-        self.inner_layout.addWidget(self.dock_container, 1) 
+        self.outer_layout.addWidget(self.dock_container, 1)
         
         # --- 左侧面板组 ---
         # 筛选器面板
@@ -283,11 +275,7 @@ class MainWindow(QMainWindow):
         bl.addWidget(self.btn_next)
         bl.addWidget(self.btn_last)
         
-        self.size_grip = QSizeGrip(self.bottom_bar)
-        self.size_grip.setFixedSize(16, 16)
-        bl.addWidget(self.size_grip, 0, Qt.AlignBottom | Qt.AlignRight)
-        
-        self.inner_layout.addWidget(self.bottom_bar)
+        self.outer_layout.addWidget(self.bottom_bar)
         
         # 连接自动保存与智能布局信号
         log.info("🔗 连接自动保存与智能布局信号...")
@@ -376,9 +364,8 @@ class MainWindow(QMainWindow):
                 y = ctypes.c_short((msg.lParam >> 16) & 0xFFFF).value
                 pos = self.mapFromGlobal(QPoint(x, y))
                 
-                rect = self.frameGeometry()
-                w = rect.width()
-                h = rect.height()
+                w = self.width()
+                h = self.height()
                 m = 8
                 
                 is_left = pos.x() < m
@@ -386,10 +373,6 @@ class MainWindow(QMainWindow):
                 is_top = pos.y() < m
                 is_bottom = pos.y() > h - m
                 
-                if is_left or is_right or is_top or is_bottom:
-                    log.debug(f"边缘检测触发: pos={pos}, w={w}, h={h}, m={m}")
-                    log.debug(f"is_left={is_left}, is_right={is_right}, is_top={is_top}, is_bottom={is_bottom}")
-
                 # 判定优先级：角落 > 边缘 > 标题栏
                 if is_top and is_left: return True, 13  # HTTOPLEFT
                 if is_top and is_right: return True, 14  # HTTOPRIGHT
