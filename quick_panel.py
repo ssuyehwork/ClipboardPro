@@ -1,13 +1,13 @@
 # -*- coding: utf-8 -*-
 import sys
 import os
+import ctypes
 from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QListWidget, QLineEdit, 
                              QListWidgetItem, QHBoxLayout, QTreeWidget, QTreeWidgetItem, 
                              QPushButton, QStyle, QSpacerItem, QSizePolicy, QAction)
 from PyQt5.QtCore import Qt, QTimer, QPoint
 from PyQt5.QtGui import QImage
 
-# 假设 data.database 在项目的 python-path 中
 from data.database import DBManager
 
 DARK_STYLESHEET = """
@@ -17,28 +17,23 @@ QWidget {
     font-family: "Microsoft YaHei";
     font-size: 14px;
 }
-
 QListWidget, QTreeWidget {
     border: 1px solid #444;
     border-radius: 4px;
     padding: 5px;
 }
-
 QListWidget::item {
-    padding: 8px; /* 左侧列表保持原间距 */
+    padding: 8px;
 }
-
 QTreeWidget::item {
-    padding-top: 2px;    /* 最终确定的紧凑间距 */
+    padding-top: 2px;
     padding-bottom: 2px;
-    padding-left: 6px;   /* 保持一定的水平间距 */
+    padding-left: 6px;
 }
-
 QListWidget::item:selected, QTreeWidget::item:selected {
-    background-color: #4D4D4D; /* 更专业的灰色高亮 */
+    background-color: #4D4D4D;
     color: #FFFFFF;
 }
-
 QLineEdit {
     background-color: #3C3C3C;
     border: 1px solid #555;
@@ -46,13 +41,10 @@ QLineEdit {
     padding: 6px;
     font-size: 16px;
 }
-
-/* --- 自定义标题栏样式 --- */
 CustomTitleBar {
-    background-color: #3C3C3C; /* 标题栏背景色 */
+    background-color: #3C3C3C;
     height: 30px;
 }
-
 CustomTitleBar QPushButton {
     background-color: transparent;
     border: none;
@@ -60,34 +52,27 @@ CustomTitleBar QPushButton {
     height: 25px;
     padding: 5px;
 }
-
 CustomTitleBar QPushButton:hover {
     background-color: #555555;
     border-radius: 4px;
 }
-
 """
 
 class CustomTitleBar(QWidget):
-    """自定义标题栏，支持拖动和自定义按钮。"""
     def __init__(self, parent):
         super().__init__(parent)
         self.parent_window = parent
         self.layout = QHBoxLayout(self)
         self.layout.setContentsMargins(5, 0, 5, 0)
         self.layout.setSpacing(5)
-
         spacer = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
         self.layout.addSpacerItem(spacer)
-
         self.pin_button = QPushButton(self)
         self.toggle_partition_button = QPushButton(self)
         self.close_button = QPushButton(self)
-        
         self.layout.addWidget(self.pin_button)
         self.layout.addWidget(self.toggle_partition_button)
         self.layout.addWidget(self.close_button)
-        
         self.drag_position = QPoint()
 
     def mousePressEvent(self, event):
@@ -100,84 +85,89 @@ class CustomTitleBar(QWidget):
             self.parent_window.move(event.globalPos() - self.drag_position)
             event.accept()
 
-
 class QuickPanel(QWidget):
     def __init__(self, db_manager):
         super().__init__()
         if not db_manager:
             raise ValueError("DBManager instance is required.")
         self.db = db_manager
+        self.last_external_hwnd = None
         self._init_ui()
         
+        # 搜索定时器
         self.search_timer = QTimer(self)
         self.search_timer.setSingleShot(True)
         self.search_timer.timeout.connect(self._update_list)
         
+        # 窗口追踪定时器
+        self.focus_timer = QTimer(self)
+        self.focus_timer.timeout.connect(self._track_active_window)
+        self.focus_timer.start(200)
+
+        # 连接信号
         self.search_box.textChanged.connect(self._on_search_text_changed)
         self.list_widget.itemActivated.connect(self._on_item_activated)
         self.partition_tree.currentItemChanged.connect(self._on_partition_selection_changed)
-
-        # 清空按钮的逻辑
         self.clear_action.triggered.connect(self.search_box.clear)
         self.search_box.textChanged.connect(lambda text: self.clear_action.setVisible(bool(text)))
-        self.clear_action.setVisible(False) # 初始状态隐藏
-        
+        self.clear_action.setVisible(False)
         self.title_bar.pin_button.clicked.connect(self._toggle_stay_on_top)
         self.title_bar.toggle_partition_button.clicked.connect(self._toggle_partition_panel)
         self.title_bar.close_button.clicked.connect(self.close)
 
+        # 初始化
         self._update_partition_tree()
         self._setup_icons()
         self._is_pinned = False
 
     def _init_ui(self):
         self.setWindowTitle("Quick Panel")
-        self.setWindowFlags(Qt.FramelessWindowHint | Qt.Tool)
+        self.setWindowFlags(Qt.FramelessWindowHint | Qt.Window) # 修改为普通窗口
         
         self.main_layout = QVBoxLayout(self)
         self.main_layout.setContentsMargins(0, 0, 0, 0)
         self.main_layout.setSpacing(0)
-
         self.title_bar = CustomTitleBar(self)
         self.main_layout.addWidget(self.title_bar)
-
         content_widget = QWidget(self)
         content_layout = QHBoxLayout(content_widget)
         content_layout.setContentsMargins(5, 5, 5, 5)
         content_layout.setSpacing(5)
-        
         left_widget = QWidget(self)
         left_layout = QVBoxLayout(left_widget)
         left_layout.setContentsMargins(0, 0, 0, 0)
         left_layout.setSpacing(5)
-
         self.search_box = QLineEdit(self)
         self.search_box.setPlaceholderText("搜索...")
-
-        # 创建并添加清空动作
         self.clear_action = QAction(self)
         self.clear_action.setIcon(self.style().standardIcon(QStyle.SP_DialogCloseButton))
         self.search_box.addAction(self.clear_action, QLineEdit.TrailingPosition)
-        
         self.list_widget = QListWidget(self)
         self.list_widget.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.list_widget.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.list_widget.setFocusPolicy(Qt.NoFocus) # 彻底禁用焦点
-        
+        self.list_widget.setFocusPolicy(Qt.NoFocus)
         left_layout.addWidget(self.search_box)
         left_layout.addWidget(self.list_widget)
-
         self.partition_tree = QTreeWidget(self)
         self.partition_tree.setHeaderHidden(True)
-        self.partition_tree.setFocusPolicy(Qt.NoFocus) # 彻底禁用焦点
-        
+        self.partition_tree.setFocusPolicy(Qt.NoFocus)
         content_layout.addWidget(left_widget, 3)
         content_layout.addWidget(self.partition_tree, 1)
-
         self.main_layout.addWidget(content_widget)
-        
         self.setStyleSheet(DARK_STYLESHEET)
         self.resize(600, 600)
+
+    def _track_active_window(self):
+        """定时追踪当前活动的窗口句柄。"""
+        try:
+            # 使用ctypes获取当前前台窗口的句柄
+            hwnd = ctypes.windll.user32.GetForegroundWindow()
+            # 如果这个句柄有效，并且不是本窗口自己的句柄，则记录下来
+            if hwnd and hwnd != self.winId():
+                self.last_external_hwnd = hwnd
+        except AttributeError:
+            # 如果不在Windows环境下，此代码会失败，但程序不会崩溃
+            self.last_external_hwnd = None
 
     def _on_search_text_changed(self):
         self.search_timer.start(300)
@@ -195,21 +185,20 @@ class QuickPanel(QWidget):
         for item in items:
             display_text = self._get_content_display(item)
             list_item = QListWidgetItem(display_text)
-            list_item.setData(Qt.UserRole, item) # 原始数据储存在这里
-            list_item.setToolTip(item.content) # 添加悬浮提示
+            list_item.setData(Qt.UserRole, item)
+            list_item.setToolTip(item.content)
             self.list_widget.addItem(list_item)
         if self.list_widget.count() > 0:
             self.list_widget.setCurrentRow(0)
 
     def _get_content_display(self, item):
-        """根据项目类型获取用于在列表中显示的文本。"""
         if item.item_type == 'file' and item.file_path:
             return os.path.basename(item.file_path)
         elif item.item_type == 'url' and item.url_domain:
             return f"[{item.url_domain}] {item.url_title or ''}"
         elif item.item_type == 'image':
             return "[图片] " + os.path.basename(item.image_path) if item.image_path else "[图片]"
-        else: # text and fallback
+        else:
             return item.content.replace('\n', ' ').replace('\r', '').strip()[:150]
 
     def _update_partition_tree(self):
@@ -253,14 +242,43 @@ class QuickPanel(QWidget):
         db_item = item.data(Qt.UserRole)
         if db_item:
             try:
+                # 1. 复制到剪贴板
                 if db_item.item_type == 'image' and db_item.data_blob:
                     image = QImage()
                     image.loadFromData(db_item.data_blob)
                     QApplication.clipboard().setImage(image)
                 else:
                     QApplication.clipboard().setText(db_item.content)
+
+                # 2. 检查是否有上一个窗口句柄
+                if self.last_external_hwnd:
+                    self.hide() # 隐藏自己
+                    try:
+                        # 激活上一个窗口
+                        ctypes.windll.user32.SetForegroundWindow(self.last_external_hwnd)
+                        if ctypes.windll.user32.IsIconic(self.last_external_hwnd):
+                            ctypes.windll.user32.ShowWindow(self.last_external_hwnd, 9)
+                    except Exception as e:
+                        print(f"激活窗口失败: {e}")
+
+                    QTimer.singleShot(100, self._send_ctrl_v)
+                else:
+                    # 如果没有有效句柄，则不执行任何操作（窗口保持可见）
+                    print("没有检测到有效的外部窗口来粘贴")
+
             except Exception as e:
-                print(f"复制到剪贴板失败: {e}")
+                print(f"处理项目激活失败: {e}")
+
+    def _send_ctrl_v(self):
+        """模拟发送 Ctrl+V 键盘事件，但不关闭窗口。"""
+        try:
+            ctypes.windll.user32.keybd_event(0x11, 0, 0, 0)
+            ctypes.windll.user32.keybd_event(0x56, 0, 0, 0)
+            ctypes.windll.user32.keybd_event(0x56, 0, 2, 0)
+            ctypes.windll.user32.keybd_event(0x11, 0, 2, 0)
+        except Exception as e:
+            print(f"模拟粘贴失败: {e}")
+        # 注意：这里不再调用 self.close()
 
     def keyPressEvent(self, event):
         key = event.key()
@@ -276,6 +294,7 @@ class QuickPanel(QWidget):
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     db_manager = DBManager()
+
     panel = QuickPanel(db_manager=db_manager) 
     panel.show()
     screen_geo = app.desktop().screenGeometry()

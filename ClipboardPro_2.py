@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 import sys
 import logging
 import traceback
@@ -38,7 +38,7 @@ def exception_hook(exctype, value, tb):
 sys.excepthook = exception_hook
 
 def main():
-    log.info("🚀 启动印象记忆_Pro (分层架构版)...")
+    log.info("🚀 启动印象记忆_Pro (QuickPanel 主窗口版)...")
     
     if hasattr(Qt, 'AA_EnableHighDpiScaling'):
         QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
@@ -66,11 +66,20 @@ def main():
             return
 
     try:
-        # 注意这里的导入路径变化
-        from ui.main_window import MainWindow
+        # 导入新的主窗口和数据库管理器
+        from quick_panel import QuickPanel
+        from data.database import DBManager
         
-        window = MainWindow()
+        # 创建实例
+        db_manager = DBManager()
+        window = QuickPanel(db_manager=db_manager)
+
+        # 显示并居中窗口
         window.show()
+        screen_geo = app.desktop().screenGeometry()
+        panel_geo = window.geometry()
+        window.move((screen_geo.width() - panel_geo.width()) // 2, (screen_geo.height() - panel_geo.height()) // 2)
+        window.search_box.setFocus()
         
         sys.exit(app.exec_())
         
