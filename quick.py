@@ -5,24 +5,19 @@ import ctypes
 from ctypes import wintypes
 import time
 import datetime
-import subprocess  # <--- 新增导入，用于启动外部进程
+import subprocess
 from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QListWidget, QLineEdit, 
                              QListWidgetItem, QHBoxLayout, QTreeWidget, QTreeWidgetItem, 
                              QPushButton, QStyle, QAction, QSplitter, QGraphicsDropShadowEffect, QLabel)
 from PyQt5.QtCore import Qt, QTimer, QPoint, QRect, QSettings, QUrl, QMimeData
 from PyQt5.QtGui import QImage, QColor, QCursor
 
-# =================================================================================
-#   Win32 API 定义
-# =================================================================================
+# --- Win32 API Definitions ---
 user32 = ctypes.windll.user32
 kernel32 = ctypes.windll.kernel32
-
 KEYEVENTF_KEYUP = 0x0002
 VK_CONTROL = 0x11
 VK_V = 0x56
-
-# SetWindowPos Flags
 HWND_TOPMOST = -1
 HWND_NOTOPMOST = -2
 SWP_NOMOVE = 0x0002
@@ -32,14 +27,10 @@ SWP_FLAGS = SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE
 
 class GUITHREADINFO(ctypes.Structure):
     _fields_ = [
-        ("cbSize", wintypes.DWORD),
-        ("flags", wintypes.DWORD),
-        ("hwndActive", wintypes.HWND),
-        ("hwndFocus", wintypes.HWND),      
-        ("hwndCapture", wintypes.HWND),
-        ("hwndMenuOwner", wintypes.HWND),
-        ("hwndMoveSize", wintypes.HWND),
-        ("hwndCaret", wintypes.HWND),
+        ("cbSize", wintypes.DWORD), ("flags", wintypes.DWORD),
+        ("hwndActive", wintypes.HWND), ("hwndFocus", wintypes.HWND),
+        ("hwndCapture", wintypes.HWND), ("hwndMenuOwner", wintypes.HWND),
+        ("hwndMoveSize", wintypes.HWND), ("hwndCaret", wintypes.HWND),
         ("rcCaret", wintypes.RECT)
     ]
 
@@ -49,16 +40,10 @@ user32.SetFocus.argtypes = [wintypes.HWND]
 user32.SetFocus.restype = wintypes.HWND
 user32.SetWindowPos.argtypes = [wintypes.HWND, wintypes.HWND, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_uint]
 
-# =================================================================================
-#   日志系统
-# =================================================================================
 def log(message):
     try: print(message, flush=True)
     except: pass
 
-# =================================================================================
-#   数据库模拟
-# =================================================================================
 try:
     from data.database import DBManager
     from services.clipboard import ClipboardManager
@@ -70,91 +55,59 @@ except ImportError:
         def __init__(self, db_manager): pass
         def process_clipboard(self, mime_data): pass
 
-# =================================================================================
-#   样式表
-# =================================================================================
 DARK_STYLESHEET = """
 QWidget#Container {
-    background-color: #2E2E2E;
-    border: 1px solid #444; 
-    border-radius: 8px;    
+    background-color: #2E2E2E; border: 1px solid #444; border-radius: 8px;
 }
 QWidget {
-    color: #F0F0F0;
-    font-family: "Microsoft YaHei", "Segoe UI Emoji";
-    font-size: 14px;
+    color: #F0F0F0; font-family: "Microsoft YaHei", "Segoe UI Emoji"; font-size: 14px;
 }
-
-/* 标题栏文字样式 */
 QLabel#TitleLabel {
-    color: #AAAAAA;
-    font-weight: bold;
-    font-size: 13px;
-    padding-left: 5px;
+    color: #AAAAAA; font-weight: bold; font-size: 13px; padding-left: 5px;
 }
-
 QListWidget, QTreeWidget {
-    border: none;
-    background-color: #2E2E2E;
-    alternate-background-color: #383838;
-    outline: none;
+    border: none; background-color: #2E2E2E; alternate-background-color: #383838; outline: none;
 }
 QListWidget::item { padding: 8px; border: none; }
 QListWidget::item:selected, QTreeWidget::item:selected {
     background-color: #4D79C4; color: #FFFFFF;
 }
 QListWidget::item:hover { background-color: #444444; }
-
 QSplitter::handle { background-color: #444; width: 2px; }
 QSplitter::handle:hover { background-color: #4D79C4; }
-
 QLineEdit {
-    background-color: #3C3C3C;
-    border: 1px solid #555;
-    border-radius: 4px;
-    padding: 6px;
-    font-size: 16px;
+    background-color: #3C3C3C; border: 1px solid #555; border-radius: 4px; padding: 6px; font-size: 16px;
 }
-
-/* 通用工具栏按钮 */
 QPushButton#ToolButton, QPushButton#MinButton, QPushButton#CloseButton, QPushButton#PinButton, QPushButton#MaxButton { 
-    background-color: transparent; 
-    border-radius: 4px; 
-    padding: 0px;  
-    font-size: 16px;
-    font-weight: bold;
-    text-align: center;
+    background-color: transparent; border-radius: 4px; padding: 0px; font-size: 16px; font-weight: bold; text-align: center;
 }
-
 QPushButton#ToolButton:hover, QPushButton#MinButton:hover, QPushButton#MaxButton:hover { background-color: #444; }
 QPushButton#ToolButton:checked, QPushButton#MaxButton:checked { background-color: #555; border: 1px solid #666; }
-
 QPushButton#CloseButton:hover { background-color: #E81123; color: white; }
-
-/* 置顶按钮特殊状态 */
 QPushButton#PinButton:hover { background-color: #444; }
 QPushButton#PinButton:checked { background-color: #0078D4; color: white; border: 1px solid #005A9E; }
 """
 
 class MainWindow(QWidget):
-    RESIZE_MARGIN = 18 
-
     def __init__(self, db_manager):
         super().__init__()
         self.db = db_manager
         self.settings = QSettings("MyTools", "ClipboardPro")
         
-        self.m_drag = False
-        self.m_DragPosition = QPoint()
-        self.resize_area = None
-        
+        # --- Resizing and Dragging Variables ---
+        self.margin = 5
+        self._is_dragging = False
+        self._is_resizing = False
+        self._resize_edge = None
+        self._drag_start_pos = QPoint()
+        self._resize_start_geom = QRect()
+
         self._is_pinned = False
         self.last_active_hwnd = None
         self.last_focus_hwnd = None
         self.last_thread_id = None
         self.my_hwnd = None
         
-        # --- Clipboard Manager ---
         self.cm = ClipboardManager(self.db)
         self.clipboard = QApplication.clipboard()
         self.clipboard.dataChanged.connect(self.on_clipboard_changed)
@@ -183,10 +136,9 @@ class MainWindow(QWidget):
         self.search_box.textChanged.connect(lambda text: self.clear_action.setVisible(bool(text)))
         self.clear_action.setVisible(False)
         
-        # 按钮信号连接
         self.btn_stay_top.clicked.connect(self._toggle_stay_on_top)
         self.btn_toggle_side.clicked.connect(self._toggle_partition_panel)
-        self.btn_open_full.clicked.connect(self._launch_main_app) # 连接启动功能
+        self.btn_open_full.clicked.connect(self._launch_main_app)
         self.btn_minimize.clicked.connect(self.showMinimized) 
         self.btn_close.clicked.connect(self.close)
         
@@ -197,6 +149,7 @@ class MainWindow(QWidget):
     def _init_ui(self):
         self.setWindowTitle("Clipboard Pro")
         self.resize(830, 630)
+        self.setMinimumSize(400, 300) # Add a reasonable minimum size
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.Window)
         
@@ -218,7 +171,6 @@ class MainWindow(QWidget):
         self.main_layout.setContentsMargins(10, 10, 10, 10)
         self.main_layout.setSpacing(10)
         
-        # --- Title Bar ---
         title_bar_layout = QHBoxLayout()
         title_bar_layout.setContentsMargins(0, 0, 0, 0)
         title_bar_layout.setSpacing(5)
@@ -226,64 +178,51 @@ class MainWindow(QWidget):
         self.title_label = QLabel("Clipboard Pro")
         self.title_label.setObjectName("TitleLabel")
         title_bar_layout.addWidget(self.title_label)
-        
         title_bar_layout.addStretch()
         
-        # --- 按钮创建区 ---
-        
-        # 1. 保持置顶 (Pin)
         self.btn_stay_top = QPushButton("📌", self)
         self.btn_stay_top.setObjectName("PinButton")
         self.btn_stay_top.setToolTip("保持置顶")
         self.btn_stay_top.setCheckable(True)
         self.btn_stay_top.setFixedSize(32, 32)
 
-        # 2. 侧边栏开关 (Eye)
         self.btn_toggle_side = QPushButton("👁️", self)
         self.btn_toggle_side.setObjectName("ToolButton")
         self.btn_toggle_side.setToolTip("显示/隐藏侧边栏")
         self.btn_toggle_side.setFixedSize(32, 32)
         
-        # 3. 启动完整界面 (Open Main) - [新增]
         self.btn_open_full = QPushButton(self)
         self.btn_open_full.setObjectName("MaxButton")
         self.btn_open_full.setToolTip("打开主程序界面")
-        # 使用最大化图标表示"完整界面"
         self.btn_open_full.setIcon(self.style().standardIcon(QStyle.SP_TitleBarMaxButton))
         self.btn_open_full.setFixedSize(32, 32)
 
-        # 4. 最小化 (Minimize)
         self.btn_minimize = QPushButton("—", self)
         self.btn_minimize.setObjectName("MinButton")
         self.btn_minimize.setToolTip("最小化")
         self.btn_minimize.setFixedSize(32, 32)
         
-        # 5. 关闭 (Close)
         self.btn_close = QPushButton(self)
         self.btn_close.setObjectName("CloseButton")
         self.btn_close.setToolTip("关闭")
         self.btn_close.setIcon(self.style().standardIcon(QStyle.SP_TitleBarCloseButton))
         self.btn_close.setFixedSize(32, 32)
         
-        # 添加到布局
         title_bar_layout.addWidget(self.btn_stay_top)
         title_bar_layout.addWidget(self.btn_toggle_side)
-        title_bar_layout.addWidget(self.btn_open_full) # 新增
+        title_bar_layout.addWidget(self.btn_open_full)
         title_bar_layout.addWidget(self.btn_minimize)
         title_bar_layout.addWidget(self.btn_close)
         
         self.main_layout.addLayout(title_bar_layout)
         
-        # --- Search Bar ---
         self.search_box = QLineEdit(self)
         self.search_box.setPlaceholderText("搜索剪贴板历史...")
         self.clear_action = QAction(self)
         self.clear_action.setIcon(self.style().standardIcon(QStyle.SP_DialogCloseButton))
         self.search_box.addAction(self.clear_action, QLineEdit.TrailingPosition)
-        
         self.main_layout.addWidget(self.search_box)
         
-        # --- Splitter Content ---
         content_widget = QWidget()
         content_layout = QHBoxLayout(content_widget)
         content_layout.setContentsMargins(0, 0, 0, 0)
@@ -312,33 +251,22 @@ class MainWindow(QWidget):
         content_layout.addWidget(self.splitter)
         self.main_layout.addWidget(content_widget)
 
-    # --- Launch Main App Logic ---
     def _launch_main_app(self):
-        """启动 ClipboardPro_2.py"""
         try:
-            # 获取当前脚本所在目录
             current_dir = os.path.dirname(os.path.abspath(__file__))
             script_path = os.path.join(current_dir, "ClipboardPro_2.py")
-            
             if os.path.exists(script_path):
-                log(f"🚀 正在启动: {script_path}")
-                # 使用 subprocess.Popen 启动新进程，不阻塞当前界面
                 subprocess.Popen([sys.executable, script_path])
             else:
-                log(f"❌ 找不到文件: {script_path}")
-                # 尝试启动 main_window.py 作为备选
                 alt_path = os.path.join(current_dir, "main_window.py")
                 if os.path.exists(alt_path):
-                    log(f"⚠️ 尝试启动 main_window.py: {alt_path}")
                     subprocess.Popen([sys.executable, alt_path])
         except Exception as e:
             log(f"❌ 启动失败: {e}")
 
-    # --- Restore & Save State ---
     def _restore_window_state(self):
         geometry = self.settings.value("geometry")
-        if geometry:
-            self.restoreGeometry(geometry)
+        if geometry: self.restoreGeometry(geometry)
         else:
             screen_geo = QApplication.desktop().screenGeometry()
             win_geo = self.geometry()
@@ -353,71 +281,66 @@ class MainWindow(QWidget):
         self.settings.setValue("splitter_state", self.splitter.saveState())
         super().closeEvent(event)
 
-    # --- Mouse Logic ---
-    def _get_resize_area(self, pos):
-        x, y = pos.x(), pos.y()
-        w, h = self.width(), self.height()
-        m = self.RESIZE_MARGIN
-        areas = []
-        if x < m: areas.append('left')
-        elif x > w - m: areas.append('right')
-        if y < m: areas.append('top')
-        elif y > h - m: areas.append('bottom')
-        return areas
-
-    def _set_cursor_shape(self, areas):
-        if not areas: self.setCursor(Qt.ArrowCursor); return
-        if 'left' in areas and 'top' in areas: self.setCursor(Qt.SizeFDiagCursor)
-        elif 'right' in areas and 'bottom' in areas: self.setCursor(Qt.SizeFDiagCursor)
-        elif 'left' in areas and 'bottom' in areas: self.setCursor(Qt.SizeBDiagCursor)
-        elif 'right' in areas and 'top' in areas: self.setCursor(Qt.SizeBDiagCursor)
-        elif 'left' in areas or 'right' in areas: self.setCursor(Qt.SizeHorCursor)
-        elif 'top' in areas or 'bottom' in areas: self.setCursor(Qt.SizeVerCursor)
+    # --- New Robust Mouse Logic ---
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
-            areas = self._get_resize_area(event.pos())
-            if areas:
-                self.resize_area = areas
-                self.m_drag = False
+            self._update_cursor_edge(event.pos())
+            if self._resize_edge is not None:
+                self._is_resizing = True
+                self._resize_start_pos = event.globalPos()
+                self._resize_start_geom = self.geometry()
             else:
-                self.resize_area = None
-                self.m_drag = True
-                self.m_DragPosition = event.globalPos() - self.pos()
+                self._is_dragging = True
+                self._drag_start_pos = event.globalPos() - self.pos()
+            event.accept()
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self._is_dragging = False
+            self._is_resizing = False
+            self.unsetCursor()
             event.accept()
 
     def mouseMoveEvent(self, event):
-        if event.buttons() == Qt.NoButton:
-            areas = self._get_resize_area(event.pos())
-            self._set_cursor_shape(areas)
-            event.accept()
-            return
-        if event.buttons() == Qt.LeftButton:
-            if self.resize_area:
-                global_pos = event.globalPos()
-                rect = self.geometry()
-                if 'left' in self.resize_area:
-                    new_w = rect.right() - global_pos.x()
-                    if new_w > 100: rect.setLeft(global_pos.x())
-                elif 'right' in self.resize_area:
-                    new_w = global_pos.x() - rect.left()
-                    if new_w > 100: rect.setWidth(new_w)
-                if 'top' in self.resize_area:
-                    new_h = rect.bottom() - global_pos.y()
-                    if new_h > 100: rect.setTop(global_pos.y())
-                elif 'bottom' in self.resize_area:
-                    new_h = global_pos.y() - rect.top()
-                    if new_h > 100: rect.setHeight(new_h)
-                self.setGeometry(rect)
-                event.accept()
-            elif self.m_drag:
-                self.move(event.globalPos() - self.m_DragPosition)
-                event.accept()
+        if self._is_resizing:
+            delta = event.globalPos() - self._resize_start_pos
+            geom = self._resize_start_geom
+            new_geom = QRect(geom)
 
-    def mouseReleaseEvent(self, event):
-        self.m_drag = False
-        self.resize_area = None
-        self.setCursor(Qt.ArrowCursor)
+            if self._resize_edge & Qt.LeftEdge: new_geom.setLeft(geom.left() + delta.x())
+            if self._resize_edge & Qt.RightEdge: new_geom.setRight(geom.right() + delta.x())
+            if self._resize_edge & Qt.TopEdge: new_geom.setTop(geom.top() + delta.y())
+            if self._resize_edge & Qt.BottomEdge: new_geom.setBottom(geom.bottom() + delta.y())
+
+            if new_geom.width() < self.minimumWidth(): new_geom.setWidth(self.minimumWidth())
+            if new_geom.height() < self.minimumHeight(): new_geom.setHeight(self.minimumHeight())
+
+            self.setGeometry(new_geom)
+        elif self._is_dragging:
+            self.move(event.globalPos() - self._drag_start_pos)
+        else:
+            self._update_cursor_shape(event.pos())
+
+    def _update_cursor_edge(self, pos):
+        self._resize_edge = 0
+        if pos.x() < self.margin: self._resize_edge |= Qt.LeftEdge
+        if pos.x() > self.width() - self.margin: self._resize_edge |= Qt.RightEdge
+        if pos.y() < self.margin: self._resize_edge |= Qt.TopEdge
+        if pos.y() > self.height() - self.margin: self._resize_edge |= Qt.BottomEdge
+
+    def _update_cursor_shape(self, pos):
+        self._update_cursor_edge(pos)
+        if self._resize_edge == (Qt.LeftEdge | Qt.TopEdge) or self._resize_edge == (Qt.RightEdge | Qt.BottomEdge):
+            self.setCursor(QCursor(Qt.SizeFDiagCursor))
+        elif self._resize_edge == (Qt.RightEdge | Qt.TopEdge) or self._resize_edge == (Qt.LeftEdge | Qt.BottomEdge):
+            self.setCursor(QCursor(Qt.SizeBDiagCursor))
+        elif self._resize_edge & (Qt.LeftEdge | Qt.RightEdge):
+            self.setCursor(QCursor(Qt.SizeHorCursor))
+        elif self._resize_edge & (Qt.TopEdge | Qt.BottomEdge):
+            self.setCursor(QCursor(Qt.SizeVerCursor))
+        else:
+            self.unsetCursor()
 
     # --- Core Logic ---
     def showEvent(self, event):
@@ -449,14 +372,13 @@ class MainWindow(QWidget):
     def _update_list(self):
         search_text = self.search_box.text()
         partition_filter = None
-        date_modify_filter = None # 新增变量
+        date_modify_filter = None
         current_partition = self.partition_tree.currentItem()
         if current_partition:
             partition_data = current_partition.data(0, Qt.UserRole)
             if partition_data:
                 if partition_data['type'] == 'today':
                     date_modify_filter = '今日'
-                    # partition_filter 保持为 None
                 elif partition_data['type'] != 'all':
                     partition_filter = partition_data
         items = self.db.get_items(search=search_text, partition_filter=partition_filter, date_modify_filter=date_modify_filter, limit=1000)
@@ -500,7 +422,6 @@ class MainWindow(QWidget):
         counts = self.db.get_partition_item_counts()
         partition_counts = counts.get('partitions', {})
 
-        # -- 添加静态项 --
         static_items = [
             ("全部数据", {'type': 'all', 'id': -1}, QStyle.SP_DirHomeIcon, counts.get('total', 0)),
             ("今日数据", {'type': 'today', 'id': -5}, QStyle.SP_FileDialogDetailedView, counts.get('today_modified', 0)),
@@ -511,13 +432,11 @@ class MainWindow(QWidget):
             item.setData(0, Qt.UserRole, data)
             item.setIcon(0, self.style().standardIcon(icon))
 
-        # -- 递归添加用户分区 --
         top_level_partitions = self.db.get_partitions_tree()
         self._add_partition_recursive(top_level_partitions, self.partition_tree, partition_counts)
 
         self.partition_tree.expandAll()
 
-        # 恢复之前的选择
         if current_selection:
             it = QTreeWidgetItemIterator(self.partition_tree)
             while it.value():
@@ -558,20 +477,15 @@ class MainWindow(QWidget):
         try:
             clipboard = QApplication.clipboard()
             
-            # 1. 处理图片
             if getattr(db_item, 'item_type', '') == 'image' and getattr(db_item, 'data_blob', None):
                 image = QImage()
                 image.loadFromData(db_item.data_blob)
                 clipboard.setImage(image)
-            
-            # 2. 处理文件：构建 URI 列表
             elif getattr(db_item, 'item_type', '') == 'file' and getattr(db_item, 'file_path', ''):
                 mime_data = QMimeData()
                 urls = [QUrl.fromLocalFile(p) for p in db_item.file_path.split(';') if p]
                 mime_data.setUrls(urls)
                 clipboard.setMimeData(mime_data)
-                
-            # 3. 处理普通文本/链接
             else:
                 clipboard.setText(db_item.content)
             
@@ -601,12 +515,10 @@ class MainWindow(QWidget):
             if attached: user32.AttachThreadInput(curr_thread, target_thread, False)
 
     def on_clipboard_changed(self):
-        if self._processing_clipboard:
-            return
+        if self._processing_clipboard: return
         self._processing_clipboard = True
         try:
             mime = self.clipboard.mimeData()
-            # quick.py 默认不与特定分区关联，所以传入 None
             self.cm.process_clipboard(mime, None)
         finally:
             self._processing_clipboard = False
@@ -631,28 +543,22 @@ class MainWindow(QWidget):
 if __name__ == '__main__':
     log("🚀 程序启动 (quick.py 作为主入口)")
     
-    # 高 DPI 适应
-    if hasattr(Qt, 'AA_EnableHighDpiScaling'):
-        QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
-    if hasattr(Qt, 'AA_UseHighDpiPixmaps'):
-        QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
+    if hasattr(Qt, 'AA_EnableHighDpiScaling'): QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
+    if hasattr(Qt, 'AA_UseHighDpiPixmaps'): QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
 
     app = QApplication(sys.argv)
     app.setApplicationName("ClipboardProQuickPanel")
 
-    # --- 单实例检测 ---
     from PyQt5.QtCore import QSharedMemory
     shared_mem = QSharedMemory("ClipboardPro_QuickPanel_Instance")
     
-    # 尝试附加到现有内存段
     if shared_mem.attach():
         log("⚠️ 检测到已有 QuickPanel 实例在运行，程序将退出。")
-        sys.exit(0) # 正常退出
+        sys.exit(0)
     
-    # 创建新的共享内存段
     if not shared_mem.create(1):
         log(f"❌ 无法创建共享内存段: {shared_mem.errorString()}")
-        sys.exit(1) # 错误退出
+        sys.exit(1)
 
     log("✅ 单例锁创建成功，启动主程序...")
 
@@ -665,14 +571,10 @@ if __name__ == '__main__':
     window = MainWindow(db_manager=db_manager)
     window.show()
     
-    # 窗口居中
     try:
         screen_geo = app.desktop().screenGeometry()
         panel_geo = window.geometry()
-        window.move(
-            (screen_geo.width() - panel_geo.width()) // 2, 
-            (screen_geo.height() - panel_geo.height()) // 2
-        )
+        window.move((screen_geo.width() - panel_geo.width()) // 2, (screen_geo.height() - panel_geo.height()) // 2)
         window.search_box.setFocus()
     except Exception as e:
         log(f"⚠️ 窗口居中失败: {e}")
