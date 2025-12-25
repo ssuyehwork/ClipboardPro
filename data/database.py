@@ -850,7 +850,7 @@ class DBManager:
                 # 新增：统计今日更新的数据
                 now = datetime.now()
                 today_start = datetime.combine(now.date(), time.min)
-                today_modified_count = base_query.filter(ClipboardItem.modified_at >= today_start).scalar()
+                today_modified_count = base_query.filter(ClipboardItem.modified_at >= today_start).count()
 
                 counts = {
                     'partitions': total_counts,
