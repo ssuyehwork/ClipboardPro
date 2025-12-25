@@ -5,10 +5,14 @@ import ctypes
 from ctypes import wintypes
 import time
 import datetime
+import tempfile
+import uuid
+import zipfile
+import io
 from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QListWidget, QLineEdit, 
                              QListWidgetItem, QHBoxLayout, QTreeWidget, QTreeWidgetItem, 
                              QPushButton, QStyle, QAction, QSplitter, QGraphicsDropShadowEffect, QLabel)
-from PyQt5.QtCore import Qt, QTimer, QPoint, QRect, QSettings
+from PyQt5.QtCore import Qt, QTimer, QPoint, QRect, QSettings, QUrl, QMimeData
 from PyQt5.QtGui import QImage, QColor, QCursor
 
 # =================================================================================
@@ -461,17 +465,78 @@ class MainWindow(QWidget):
 
     def _on_item_activated(self, item):
         db_item = item.data(Qt.UserRole)
-        if not db_item: return
+        if not db_item:
+            return
+
         try:
             clipboard = QApplication.clipboard()
-            if getattr(db_item, 'item_type', '') == 'image' and getattr(db_item, 'data_blob', None):
+            item_type = getattr(db_item, 'item_type', 'text')
+            data_blob = getattr(db_item, 'data_blob', None)
+            content = getattr(db_item, 'content', '')
+
+            # --- 文件处理分支 ---
+            if item_type == 'file' and data_blob:
+                log.info("处理文件粘贴...")
+                # 检查数据是否为ZIP（通过文件头 'PK' 标志）
+                is_zip = data_blob.startswith(b'PK')
+
+                # 创建唯一的临时目录来存放解压/写入的文件
+                temp_dir = os.path.join(tempfile.gettempdir(), "clipboard_pro_paste", str(uuid.uuid4()))
+                os.makedirs(temp_dir, exist_ok=True)
+                log.debug(f"创建临时目录: {temp_dir}")
+
+                file_paths = []
+
+                if is_zip:
+                    # 解压ZIP包到临时目录
+                    log.info("检测到ZIP数据，正在解压...")
+                    with io.BytesIO(data_blob) as mem_zip:
+                        with zipfile.ZipFile(mem_zip, 'r') as zf:
+                            for name in zf.namelist():
+                                temp_path = os.path.join(temp_dir, name)
+                                with open(temp_path, 'wb') as f:
+                                    f.write(zf.read(name))
+                                file_paths.append(temp_path)
+                    log.info(f"成功解压 {len(file_paths)} 个文件")
+                else:
+                    # 处理单个文件
+                    log.info("检测到单个文件数据")
+                    # 从 content 中提取原始文件名
+                    # display_text 格式为 "文件: filename.txt"
+                    filename = content.split(":", 1)[-1].strip() if ":" in content else "pasted_file"
+                    temp_path = os.path.join(temp_dir, filename)
+                    with open(temp_path, 'wb') as f:
+                        f.write(data_blob)
+                    file_paths.append(temp_path)
+                    log.info(f"成功写入临时文件: {temp_path}")
+
+                # 将临时文件路径放入剪贴板
+                if file_paths:
+                    mime_data = QMimeData()
+                    urls = [QUrl.fromLocalFile(p) for p in file_paths]
+                    mime_data.setUrls(urls)
+                    clipboard.setMimeData(mime_data)
+                    log.info("已将临时文件URL设置到剪贴板")
+
+            # --- 图片处理分支 ---
+            elif item_type == 'image' and data_blob:
+                log.info("处理图片粘贴...")
                 image = QImage()
-                image.loadFromData(db_item.data_blob)
+                image.loadFromData(data_blob)
                 clipboard.setImage(image)
+                log.info("已将图片数据设置到剪贴板")
+
+            # --- 默认文本处理分支 ---
             else:
-                clipboard.setText(db_item.content)
+                log.info("处理文本粘贴...")
+                clipboard.setText(content)
+                log.info("已将文本内容设置到剪贴板")
+
+            # 执行粘贴
             self._paste_ditto_style()
-        except Exception as e: log(f"❌ 操作失败: {e}")
+
+        except Exception as e:
+            log(f"❌ 粘贴操作失败: {e}", exc_info=True)
 
     def _paste_ditto_style(self):
         target_win = self.last_active_hwnd
