@@ -777,18 +777,40 @@ class DBManager:
                 return False
 
     def set_partition_tags(self, partition_id, tag_names):
-        """为一个分区设置预设标签"""
+        """为一个分区设置预设标签,并自动将其应用到该分区(及其子孙分区)下的所有现有项目。"""
         with self.Session() as session:
             try:
                 partition = session.query(Partition).options(joinedload(Partition.tags)).get(partition_id)
                 if not partition: return
+
+                # 1. 更新分区本身的预设标签
                 partition.tags.clear()
+                tags_to_apply = []
                 for name in [name.strip() for name in tag_names if name.strip()]:
                     tag = session.query(Tag).filter_by(name=name).first() or Tag(name=name)
                     session.add(tag)
                     if tag not in partition.tags:
                         partition.tags.append(tag)
+                    tags_to_apply.append(tag)
+
+                # 2. 获取该分区及其所有子孙分区的ID
+                all_partition_ids = self._get_all_descendant_ids(session, partition_id)
+
+                # 3. 找到这些分区下的所有项目
+                if all_partition_ids and tags_to_apply:
+                    items_to_tag = session.query(ClipboardItem).options(joinedload(ClipboardItem.tags)).filter(
+                        ClipboardItem.partition_id.in_(all_partition_ids)
+                    ).all()
+
+                    # 4. 为每个项目批量添加新标签
+                    for item in items_to_tag:
+                        for tag in tags_to_apply:
+                            if tag not in item.tags:
+                                item.tags.append(tag)
+
                 session.commit()
+                log.info(f"成功为分区 {partition_id} 设置预设标签,并将其应用到了 {len(items_to_tag) if 'items_to_tag' in locals() else 0} 个项目中。")
+
             except Exception as e:
                 log.error(f"设置分区标签失败: {e}")
                 session.rollback()
