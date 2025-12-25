@@ -76,7 +76,7 @@ class SetPartitionTagsDialog(QDialog):
 
         # 分区名称标签
         name_layout = QHBoxLayout()
-        name_label = QLabel("文件夹名:")
+        name_label = QLabel("分区名称:")
         name_value = QLabel(self.partition_name)
         name_value.setStyleSheet("font-weight: bold;")
         name_layout.addWidget(name_label)

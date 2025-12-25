@@ -4,7 +4,7 @@ import os
 import hashlib
 import logging
 from datetime import datetime, timedelta, time
-from sqlalchemy import create_engine, Column, Integer, String, Text, Boolean, DateTime, ForeignKey, Table, Index, Float, func, or_, exists, and_, BLOB
+from sqlalchemy import create_engine, Column, Integer, String, Text, Boolean, DateTime, ForeignKey, Table, Index, Float, func, or_, exists, and_, BLOB, desc
 from sqlalchemy.orm import declarative_base, relationship, sessionmaker, joinedload, subqueryload
 
 log = logging.getLogger("Database")
@@ -530,10 +530,25 @@ class DBManager:
         stats = {'tags': [], 'stars': {}, 'colors': {}, 'types': {}}
         with self.Session() as session:
             try:
-                # 修复：使用 outerjoin 确保所有标签都被统计，即使它们没有关联任何项目
-                stats['tags'] = session.query(Tag.name, func.count(item_tags.c.item_id)).outerjoin(item_tags).group_by(Tag.id).all()
+                # 优化: 获取标签列表，并按最近使用时间排序
+                # 1. 创建一个子查询，用于找到每个标签(tag_id)关联的最新修改时间
+                latest_usage_subq = session.query(
+                    item_tags.c.tag_id,
+                    func.max(ClipboardItem.modified_at).label('latest_modified_at')
+                ).join(ClipboardItem, item_tags.c.item_id == ClipboardItem.id)\
+                 .group_by(item_tags.c.tag_id).subquery()
+
+                # 2. 主查询：获取标签名称、项目计数，并以上述子查询的最新时间进行排序
+                tags_query = session.query(
+                    Tag.name,
+                    func.count(item_tags.c.item_id)
+                ).outerjoin(item_tags)\
+                 .outerjoin(latest_usage_subq, Tag.id == latest_usage_subq.c.tag_id)\
+                 .group_by(Tag.id)\
+                 .order_by(desc(latest_usage_subq.c.latest_modified_at))
+
+                stats['tags'] = tags_query.all()
                 
-                # 修复: 恢复 stars 查询
                 stars = session.query(ClipboardItem.star_level, func.count(ClipboardItem.id)).group_by(ClipboardItem.star_level).all()
                 stats['stars'] = {s: c for s, c in stars}
                 
