@@ -847,16 +847,22 @@ class DBManager:
                             total_counts[parent.id] = total_counts.get(parent.id, 0) + direct_count
                             parent = partition_map.get(parent.parent_id)
                 
+                # 新增：统计今日更新的数据
+                now = datetime.now()
+                today_start = datetime.combine(now.date(), time.min)
+                today_modified_count = base_query.filter(ClipboardItem.modified_at >= today_start).scalar()
+
                 counts = {
                     'partitions': total_counts,
                     'uncategorized': uncategorized_count,
                     'untagged': base_query.filter(~exists().where(item_tags.c.item_id == ClipboardItem.id)).count(),
-                    'trash': session.query(func.count(ClipboardItem.id)).filter(ClipboardItem.is_deleted == True).scalar()
+                    'trash': session.query(func.count(ClipboardItem.id)).filter(ClipboardItem.is_deleted == True).scalar(),
+                    'today_modified': today_modified_count
                 }
                 return counts
             except Exception as e:
                 log.error(f"获取分区项目计数失败: {e}", exc_info=True)
-                return {'partitions': {}, 'uncategorized': 0, 'untagged': 0, 'trash': 0}
+                return {'partitions': {}, 'uncategorized': 0, 'untagged': 0, 'trash': 0, 'today_modified': 0}
 
     def move_items_to_partition(self, item_ids, partition_id):
         """将多个项目批量移动到指定分区"""
