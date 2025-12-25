@@ -852,7 +852,11 @@ class DBManager:
                 today_start = datetime.combine(now.date(), time.min)
                 today_modified_count = base_query.filter(ClipboardItem.modified_at >= today_start).count()
 
+                # 5. 计算总数
+                total_count = base_query.count()
+
                 counts = {
+                    'total': total_count, # 新增: 总项目数
                     'partitions': total_counts,
                     'uncategorized': uncategorized_count,
                     'untagged': base_query.filter(~exists().where(item_tags.c.item_id == ClipboardItem.id)).count(),

@@ -459,7 +459,7 @@ class MainWindow(QWidget):
                     # partition_filter 保持为 None
                 elif partition_data['type'] != 'all':
                     partition_filter = partition_data
-        items = self.db.get_items(search=search_text, partition_filter=partition_filter, date_modify_filter=date_modify_filter, limit=100)
+        items = self.db.get_items(search=search_text, partition_filter=partition_filter, date_modify_filter=date_modify_filter, limit=None)
         self.list_widget.clear()
         self._add_debug_test_item()
         for item in items:
@@ -502,7 +502,7 @@ class MainWindow(QWidget):
 
         # -- 添加静态项 --
         static_items = [
-            ("全部数据", {'type': 'all', 'id': -1}, QStyle.SP_DirHomeIcon, sum(partition_counts.values()) + counts.get('uncategorized', 0)),
+            ("全部数据", {'type': 'all', 'id': -1}, QStyle.SP_DirHomeIcon, counts.get('total', 0)),
             ("今日数据", {'type': 'today', 'id': -5}, QStyle.SP_FileDialogDetailedView, counts.get('today_modified', 0)),
         ]
 
