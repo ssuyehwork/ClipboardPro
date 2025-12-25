@@ -216,6 +216,7 @@ class DBManager:
             existing = session.query(ClipboardItem).filter_by(content_hash=text_hash).first()
             if existing:
                 existing.last_visited_at = datetime.now()
+                existing.modified_at = datetime.now()
                 existing.visit_count += 1
                 if partition_id and not existing.partition_id:
                      existing.partition_id = partition_id
