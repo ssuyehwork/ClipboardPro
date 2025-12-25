@@ -459,7 +459,7 @@ class MainWindow(QWidget):
                     # partition_filter 保持为 None
                 elif partition_data['type'] != 'all':
                     partition_filter = partition_data
-        items = self.db.get_items(search=search_text, partition_filter=partition_filter, date_modify_filter=date_modify_filter, limit=None)
+        items = self.db.get_items(search=search_text, partition_filter=partition_filter, date_modify_filter=date_modify_filter, limit=1000)
         self.list_widget.clear()
         self._add_debug_test_item()
         for item in items:
