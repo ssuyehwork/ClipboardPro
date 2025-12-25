@@ -14,7 +14,7 @@ from sqlalchemy.orm import joinedload
 
 # 核心逻辑
 from data.database import DBManager, Partition
-from services.clipboard import ClipboardManager
+# from services.clipboard import ClipboardManager # 移除
 from core.shared import format_size, get_color_icon
 
 # UI 组件
@@ -80,7 +80,6 @@ class MainWindow(QMainWindow):
         self.page = 1
         self.page_size = 100 # 默认每页100条
         self.total_items = 0
-        self._processing_clipboard = False  # 防止剪贴板事件重复处理
         self.item_id_to_select_after_load = None # 用于处理列表加载后的高亮
         
         # 定时器
@@ -92,11 +91,6 @@ class MainWindow(QMainWindow):
         
         # 服务
         self.db = DBManager()
-        self.cm = ClipboardManager(self.db)
-        self.cm.data_captured.connect(self.refresh_after_capture) 
-        
-        self.clipboard = QApplication.clipboard()
-        self.clipboard.dataChanged.connect(self.on_clipboard_event)
         
         # 界面
         self.setup_ui()
@@ -703,26 +697,6 @@ class MainWindow(QMainWindow):
             log.debug(f"智能布局调整略过: {e}")
 
     def closeEvent(self, e): self.save_window_state(); e.accept()
-
-    def on_clipboard_event(self):
-        """处理剪贴板变化事件，防止重复处理"""
-        if self._processing_clipboard:
-            return
-        
-        self._processing_clipboard = True
-        try:
-            mime = self.clipboard.mimeData()
-            partition_info = self.partition_panel.get_current_selection()
-            self.cm.process_clipboard(mime, partition_info)
-        finally:
-            self._processing_clipboard = False
-
-    def refresh_after_capture(self):
-        """捕获到新数据后，刷新主列表和分区面板"""
-        # 使用 0ms 延迟确保当前事件处理完成后立即刷新 UI
-        # 核心修复: 连接到具体的刷新方法，而不是全局刷新
-        QTimer.singleShot(0, self.load_data)
-        QTimer.singleShot(0, self.partition_panel.refresh_partitions)
 
     def go_to_first_page(self):
         self.page = 1

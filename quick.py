@@ -60,10 +60,14 @@ def log(message):
 # =================================================================================
 try:
     from data.database import DBManager
+    from services.clipboard import ClipboardManager
 except ImportError:
     class DBManager:
         def get_items(self, **kwargs): return []
         def get_partitions_tree(self): return []
+    class ClipboardManager:
+        def __init__(self, db_manager): pass
+        def process_clipboard(self, mime_data): pass
 
 # =================================================================================
 #   样式表
@@ -153,6 +157,13 @@ class MainWindow(QWidget):
         self.last_thread_id = None
         self.my_hwnd = None
         
+        # --- Clipboard Manager ---
+        self.cm = ClipboardManager(self.db)
+        self.clipboard = QApplication.clipboard()
+        self.clipboard.dataChanged.connect(self.on_clipboard_changed)
+        self.cm.data_captured.connect(self._update_list)
+        self._processing_clipboard = False
+
         self._init_ui()
         self._restore_window_state()
         
@@ -484,6 +495,17 @@ class MainWindow(QWidget):
         finally:
             if attached: user32.AttachThreadInput(curr_thread, target_thread, False)
 
+    def on_clipboard_changed(self):
+        if self._processing_clipboard:
+            return
+        self._processing_clipboard = True
+        try:
+            mime = self.clipboard.mimeData()
+            # quick.py 默认不与特定分区关联，所以传入 None
+            self.cm.process_clipboard(mime, None)
+        finally:
+            self._processing_clipboard = False
+
     def keyPressEvent(self, event):
         key = event.key()
         if key == Qt.Key_Escape: self.close()
@@ -502,10 +524,52 @@ class MainWindow(QWidget):
                 self.list_widget.addItem(item)
 
 if __name__ == '__main__':
-    log("🚀 程序启动 (Eye Icon Update)")
+    log("🚀 程序启动 (quick.py 作为主入口)")
+
+    # 高 DPI 适应
+    if hasattr(Qt, 'AA_EnableHighDpiScaling'):
+        QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
+    if hasattr(Qt, 'AA_UseHighDpiPixmaps'):
+        QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
+
     app = QApplication(sys.argv)
-    try: db_manager = DBManager()
-    except: sys.exit(1)
-    window = MainWindow(db_manager=db_manager) 
+    app.setApplicationName("ClipboardProQuickPanel")
+
+    # --- 单实例检测 ---
+    from PyQt5.QtCore import QSharedMemory
+    shared_mem = QSharedMemory("ClipboardPro_QuickPanel_Instance")
+
+    # 尝试附加到现有内存段
+    if shared_mem.attach():
+        log("⚠️ 检测到已有 QuickPanel 实例在运行，程序将退出。")
+        sys.exit(0) # 正常退出
+
+    # 创建新的共享内存段
+    if not shared_mem.create(1):
+        log(f"❌ 无法创建共享内存段: {shared_mem.errorString()}")
+        sys.exit(1) # 错误退出
+
+    log("✅ 单例锁创建成功，启动主程序...")
+
+    try:
+        db_manager = DBManager()
+    except Exception as e:
+        log(f"❌ 数据库连接失败: {e}")
+        sys.exit(1)
+
+    window = MainWindow(db_manager=db_manager)
     window.show()
+
+    # 窗口居中
+    try:
+        screen_geo = app.desktop().screenGeometry()
+        panel_geo = window.geometry()
+        window.move(
+            (screen_geo.width() - panel_geo.width()) // 2,
+            (screen_geo.height() - panel_geo.height()) // 2
+        )
+        window.search_box.setFocus()
+    except Exception as e:
+        log(f"⚠️ 窗口居中失败: {e}")
+
     sys.exit(app.exec_())
