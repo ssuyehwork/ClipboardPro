@@ -7,6 +7,8 @@ from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QTreeWidget, QTreeWidgetItem,
 from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QFont, QIcon, QPixmap, QColor, QPainter
 
+from .dialogs import SetPartitionTagsDialog
+
 log = logging.getLogger(__name__)
 
 
@@ -314,11 +316,14 @@ class PartitionPanel(QWidget):
     
     def _set_partition_tags(self, item):
         item_data = item.data(0, Qt.UserRole)
-        current_tags_str = ", ".join(self.db.get_partition_tags(item_data['id']))
-        new_tags_str, ok = QInputDialog.getText(self, "设置预设标签", "请输入标签（用逗号分隔）:", QLineEdit.Normal, current_tags_str)
-        if ok:
-            tag_names = [tag.strip() for tag in new_tags_str.split(',') if tag.strip()]
-            self.db.set_partition_tags(item_data['id'], tag_names)
+        partition_id = item_data['id']
+        partition_name = item.text(0).split(' (')[0]
+        current_tags = self.db.get_partition_tags(partition_id)
+
+        dialog = SetPartitionTagsDialog(self.db, partition_name, current_tags, self)
+        if dialog.exec_() == QDialog.Accepted:
+            new_tags = dialog.get_selected_tags()
+            self.db.set_partition_tags(partition_id, new_tags)
             self.partitionsUpdated.emit()
             
     def get_current_selection(self):
