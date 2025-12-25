@@ -542,23 +542,38 @@ class MainWindow(QWidget):
         target_win = self.last_active_hwnd
         target_focus = self.last_focus_hwnd
         target_thread = self.last_thread_id
-        if not target_win or not user32.IsWindow(target_win): return
+        if not target_win or not user32.IsWindow(target_win):
+            return
+
         curr_thread = kernel32.GetCurrentThreadId()
         attached = False
-        if target_thread and curr_thread != target_thread:
-            attached = user32.AttachThreadInput(curr_thread, target_thread, True)
+
         try:
+            self.hide() # <--- 关键修复：隐藏窗口以释放焦点
+
+            if target_thread and curr_thread != target_thread:
+                attached = user32.AttachThreadInput(curr_thread, target_thread, True)
+
             if user32.IsIconic(target_win): user32.ShowWindow(target_win, 9)
             user32.SetForegroundWindow(target_win)
             if target_focus and user32.IsWindow(target_focus): user32.SetFocus(target_focus)
-            time.sleep(0.1)
+
+            time.sleep(0.1) # 短暂延时确保焦点切换完成
+
+            # 模拟 Ctrl+V
             user32.keybd_event(VK_CONTROL, 0, 0, 0)
             user32.keybd_event(VK_V, 0, 0, 0)
             user32.keybd_event(VK_V, 0, KEYEVENTF_KEYUP, 0)
             user32.keybd_event(VK_CONTROL, 0, KEYEVENTF_KEYUP, 0)
-        except Exception as e: log(f"❌ 粘贴异常: {e}")
+
+        except Exception as e:
+            log(f"❌ 粘贴操作异常: {e}", exc_info=True)
+
         finally:
-            if attached: user32.AttachThreadInput(curr_thread, target_thread, False)
+            # 关键修复：确保窗口总是能重新显示
+            if attached:
+                user32.AttachThreadInput(curr_thread, target_thread, False)
+            self.show()
 
     def on_clipboard_changed(self):
         if self._processing_clipboard:
