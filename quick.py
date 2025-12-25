@@ -449,12 +449,17 @@ class MainWindow(QWidget):
     def _update_list(self):
         search_text = self.search_box.text()
         partition_filter = None
+        date_modify_filter = None # 新增变量
         current_partition = self.partition_tree.currentItem()
         if current_partition:
             partition_data = current_partition.data(0, Qt.UserRole)
-            if partition_data and partition_data['type'] != 'all':
-                partition_filter = partition_data
-        items = self.db.get_items(search=search_text, partition_filter=partition_filter, limit=100)
+            if partition_data:
+                if partition_data['type'] == 'today':
+                    date_modify_filter = '今日'
+                    # partition_filter 保持为 None
+                elif partition_data['type'] != 'all':
+                    partition_filter = partition_data
+        items = self.db.get_items(search=search_text, partition_filter=partition_filter, date_modify_filter=date_modify_filter, limit=100)
         self.list_widget.clear()
         self._add_debug_test_item()
         for item in items:
@@ -476,20 +481,65 @@ class MainWindow(QWidget):
         else:
             return getattr(item, 'content', '').replace('\n', ' ').replace('\r', '').strip()[:150]
 
-    def _update_partition_tree(self):
-        self.partition_tree.clear()
-        all_items_node = QTreeWidgetItem(self.partition_tree, ["全部"])
-        all_items_node.setData(0, Qt.UserRole, {'type': 'all', 'id': -1})
-        top_level_partitions = self.db.get_partitions_tree()
-        self._add_partition_recursive(top_level_partitions, self.partition_tree)
-        self.partition_tree.expandAll()
-        self.partition_tree.setCurrentItem(all_items_node)
+    def _create_color_icon(self, color_str):
+        from PyQt5.QtGui import QPixmap, QPainter, QIcon
+        pixmap = QPixmap(16, 16)
+        pixmap.fill(Qt.transparent)
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setBrush(QColor(color_str or "#808080"))
+        painter.setPen(Qt.NoPen)
+        painter.drawRoundedRect(2, 2, 12, 12, 4, 4)
+        painter.end()
+        return QIcon(pixmap)
 
-    def _add_partition_recursive(self, partitions, parent_item):
+    def _update_partition_tree(self):
+        current_selection = self.partition_tree.currentItem().data(0, Qt.UserRole) if self.partition_tree.currentItem() else None
+        self.partition_tree.clear()
+
+        counts = self.db.get_partition_item_counts()
+        partition_counts = counts.get('partitions', {})
+
+        # -- 添加静态项 --
+        static_items = [
+            ("全部数据", {'type': 'all', 'id': -1}, QStyle.SP_DirHomeIcon, sum(partition_counts.values()) + counts.get('uncategorized', 0)),
+            ("今日数据", {'type': 'today', 'id': -5}, QStyle.SP_FileDialogDetailedView, counts.get('today_modified', 0)),
+        ]
+
+        for name, data, icon, count in static_items:
+            item = QTreeWidgetItem(self.partition_tree, [f"{name} ({count})"])
+            item.setData(0, Qt.UserRole, data)
+            item.setIcon(0, self.style().standardIcon(icon))
+
+        # -- 递归添加用户分区 --
+        top_level_partitions = self.db.get_partitions_tree()
+        self._add_partition_recursive(top_level_partitions, self.partition_tree, partition_counts)
+
+        self.partition_tree.expandAll()
+
+        # 恢复之前的选择
+        if current_selection:
+            it = QTreeWidgetItemIterator(self.partition_tree)
+            while it.value():
+                item = it.value()
+                item_data = item.data(0, Qt.UserRole)
+                if item_data and item_data.get('id') == current_selection.get('id') and item_data.get('type') == current_selection.get('type'):
+                    self.partition_tree.setCurrentItem(item)
+                    break
+                it += 1
+        else:
+            if self.partition_tree.topLevelItemCount() > 0:
+                self.partition_tree.setCurrentItem(self.partition_tree.topLevelItem(0))
+
+    def _add_partition_recursive(self, partitions, parent_item, partition_counts):
         for partition in partitions:
-            item = QTreeWidgetItem(parent_item, [partition.name])
-            item.setData(0, Qt.UserRole, {'type': 'partition', 'id': partition.id})
-            if partition.children: self._add_partition_recursive(partition.children, item)
+            count = partition_counts.get(partition.id, 0)
+            item = QTreeWidgetItem(parent_item, [f"{partition.name} ({count})"])
+            item.setData(0, Qt.UserRole, {'type': 'partition', 'id': partition.id, 'color': partition.color})
+            item.setIcon(0, self._create_color_icon(partition.color))
+
+            if partition.children:
+                self._add_partition_recursive(partition.children, item, partition_counts)
 
     def _on_partition_selection_changed(self, c, p): self._update_list()
     def _toggle_partition_panel(self): self.partition_tree.setVisible(not self.partition_tree.isVisible())
