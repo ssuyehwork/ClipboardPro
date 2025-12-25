@@ -96,7 +96,7 @@ class TagPanel(QWidget):
         if not self.isVisible(): return
         # 补偿 10px 的阴影外边距，确保内容对齐输入框
         pos = self.input_widget.mapToGlobal(QPoint(-10, self.input_widget.height() - 8))
-        self.popup.resize(320, 320) # 使用更宽的固定尺寸
+        self.popup.resize(280, 320) # 调整为更紧凑的尺寸
         self.popup.move(pos)
         self.popup.raise_()
     def _on_popup_tag_toggle(self, tag_name, checked):
