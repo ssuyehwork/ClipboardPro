@@ -351,4 +351,57 @@ QMenu::separator {
     background: #454545;
     margin: 4px 0px;
 }
+
+/* =======================================================
+   标签弹窗 (TagPopup)
+   ======================================================= */
+#TagPopupContainer {
+    background-color: #252526;
+    border: 1px solid #454545;
+    border-radius: 6px;
+}
+#TagPopupHeader {
+    font-size: 13px;
+    font-weight: bold;
+    color: #569cd6;
+    background: transparent;
+}
+#TagPopupTip {
+    font-size: 11px;
+    color: #777777;
+    background: transparent;
+}
+
+/* 创建新标签按钮 */
+#TagCreateButton {
+    background-color: transparent;
+    border: 1px dashed #444444;
+    color: #9cdcfe;
+    border-radius: 4px;
+    padding: 6px;
+    text-align: left;
+}
+#TagCreateButton:hover {
+    background-color: #333333;
+    border-style: solid;
+}
+
+/* 历史标签按钮 */
+#TagPopupButton {
+    background-color: #333333;
+    border: 1px solid #454545;
+    color: #cccccc;
+    border-radius: 4px;
+    padding: 5px;
+    text-align: left;
+}
+#TagPopupButton:hover {
+    background-color: #3e3e42;
+    border-color: #666666;
+}
+#TagPopupButton:checked {
+    background-color: #264f78; /* 选中时的背景色 */
+    color: #ffffff;             /* 选中时的文字颜色 */
+    border-color: #264f78;     /* 选中时的边框颜色 */
+}
 """
